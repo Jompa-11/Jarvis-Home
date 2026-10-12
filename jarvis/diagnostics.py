@@ -72,6 +72,35 @@ def _windows_details() -> dict[str, Any]:
         return {"error": "Windows device query failed"}
 
 
+def _nvidia_gpus() -> list[dict[str, Any]]:
+    """Exact GPU memory from nvidia-smi when an NVIDIA driver is installed."""
+    exe = shutil.which("nvidia-smi")
+    if not exe:
+        return []
+    try:
+        out = subprocess.run(
+            [exe, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    gpus = []
+    for line in out.stdout.splitlines():
+        name, _, mem = line.rpartition(",")
+        if name.strip() and mem.strip().isdigit():
+            gpus.append({"name": name.strip(), "vram_mb": int(mem.strip()), "source": "nvidia-smi"})
+    return gpus
+
+
+def _merge_gpus(wmi: list[dict[str, Any]], nvidia: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # Windows reports AdapterRAM as a 32-bit value, so cards with more than
+    # 4 GB show about 4095 MB. Prefer nvidia-smi's figure where it has one.
+    exact = {g["name"]: g for g in nvidia}
+    merged = [exact.pop(g.get("name"), {**g, "source": "windows (capped at 4 GB)"}) for g in wmi]
+    return merged + list(exact.values())
+
+
 def collect(data_dir: Path, credential_envs: dict[str, str]) -> dict[str, Any]:
     from .secrets import has_secret
 
@@ -91,7 +120,7 @@ def collect(data_dir: Path, credential_envs: dict[str, str]) -> dict[str, Any]:
         "cpu": {"name": win.get("cpu") or platform.processor() or None, "logical_cores": os.cpu_count()},
         "memory_gb": _memory_gb(),
         "disk_free_gb": round(disk.free / 1024**3, 1),
-        "gpus": win.get("gpus") or [],
+        "gpus": _merge_gpus(win.get("gpus") or [], _nvidia_gpus()),
         "microphones": win.get("microphones") or [],
         "cameras": win.get("cameras") or [],
         "devices_detectable": IS_WINDOWS,

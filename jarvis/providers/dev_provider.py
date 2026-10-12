@@ -79,6 +79,16 @@ def _summarize(tool_name: str | None, content: str, is_error: bool) -> str:
             return f"{LABEL}\nNo Sonos speakers were found in Home Assistant."
         lines = [f"- {s.get('name')} ({s.get('area') or 'no room'}) — {s.get('state')}" for s in speakers]
         return f"{LABEL}\nI found {len(speakers)} speaker(s):\n" + "\n".join(lines)
+    if tool_name == "system_get_status" and isinstance(data, dict):
+        lines = []
+        for p in data.get("ai_providers", []):
+            lines.append(f"- AI {p.get('name')}: {'available' if p.get('available') else p.get('detail')}")
+        lines.append(f"- Home Assistant: {str(data.get('home_assistant', 'unknown')).replace('_', ' ')}")
+        lines.append(f"- Sonos speakers: {data.get('sonos_speakers', 0)}")
+        lines.append(f"- Microphone: {str(data.get('microphone')).replace('_', ' ')}; camera: {str(data.get('camera')).replace('_', ' ')}")
+        dry = data.get("dry_run", {})
+        lines.append(f"- Dry-run: computer {'on' if dry.get('computer') else 'off'}, smart home {'on' if dry.get('smart_home') else 'off'}")
+        return f"{LABEL}\nSystem status:\n" + "\n".join(lines)
     if tool_name == "system_get_time" and isinstance(data, dict):
         return f"{LABEL}\nIt is {data.get('local_time')}."
     verified = payload.get("verified")

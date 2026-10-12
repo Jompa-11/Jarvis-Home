@@ -118,7 +118,12 @@ def main(argv: list[str] | None = None) -> int:
         envs = {"anthropic_api_key": cfg.anthropic.api_key_env, "home_assistant_token": cfg.homeassistant.token_env}
         print(json.dumps(diagnostics.collect(cfg.data_dir, envs), indent=2))
         return 0
-    return _serve(cfg, args.desktop, cfg.server.open_browser and not args.no_browser)
+    try:
+        return _serve(cfg, args.desktop, cfg.server.open_browser and not args.no_browser)
+    except KeyboardInterrupt:
+        # Ctrl+C is the normal way to stop JARVIS; no traceback needed.
+        print("JARVIS stopped.")
+        return 0
 
 
 if __name__ == "__main__":

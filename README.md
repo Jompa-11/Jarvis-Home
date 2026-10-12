@@ -5,7 +5,7 @@ orchestrator, hybrid AI (Claude in the cloud, Ollama locally), Home Assistant /
 Sonos control, a restricted Windows control layer, and a holographic HUD
 interface. Every indicator in the interface shows real backend state.
 
-![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-125%20passing-5fe3ff)
+![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-129%20passing-5fe3ff)
 
 ## What works today
 
@@ -84,7 +84,7 @@ Try “list speakers”, “set the kitchen to 30 percent”, “pause the livin
 
 ```bash
 pip install --require-hashes -r requirements-dev.lock
-python -m pytest            # 125 tests; no network, no hardware, no credentials needed
+python -m pytest            # 129 tests; no network, no hardware, no credentials needed
 python tests/fake_ha.py     # fake Home Assistant on :8123 (token "demo-token") for UI testing
 ```
 
