@@ -123,6 +123,11 @@ class OllamaConfig(BaseModel):
     base_url: str = "http://127.0.0.1:11434"
     model: str = "qwen2.5:3b"
     keep_alive: str = "10m"
+    # Context window in tokens. Ollama's default (often 4096) is too small for
+    # JARVIS's instructions plus tool definitions plus history, and Ollama
+    # silently drops the oldest text when it overflows. 8192 fits a 7B model
+    # comfortably in 8 GB of VRAM.
+    num_ctx: int = Field(8192, ge=2048, le=131072)
 
 
 class AIConfig(BaseModel):
