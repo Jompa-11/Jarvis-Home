@@ -52,6 +52,8 @@ def match_intent(text: str, available: set[str]) -> ToolCall | None:
             return _call("sonos_playback", speaker=target, action=action)
     if re.search(r"\b(playing|spelas|playback status)\b", t) and ok("sonos_get_playback") and target:
         return _call("sonos_get_playback", speaker=target)
+    if re.search(r"\b(which|what|vilka)\b.*\b(apps?|applications?|programs?|program|appar)\b", t) and ok("computer_list_apps"):
+        return _call("computer_list_apps")
     m = re.search(r"\b(?:open|start|launch|öppna|starta)\s+([\w-]+)", t)
     if m and ok("computer_open_app"):
         return _call("computer_open_app", app=m.group(1))

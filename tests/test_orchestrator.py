@@ -123,7 +123,9 @@ async def test_disallowed_app_rejected(make_core):
     p = providers([[("computer_open_app", {"app": "cmd"})], "Not allowed."])
     core = make_core(p)
     await core.orchestrator.handle("open cmd")
-    assert "not an approved application" in tool_results(p["anthropic"])[0]["error"]
+    err = tool_results(p["anthropic"])[0]["error"]
+    # Rejected by the schema (enum of approved apps) before the adapter is reached.
+    assert "Invalid arguments" in err and "notepad" in err
 
 
 async def test_role_restrictions(make_core, fake_ha):

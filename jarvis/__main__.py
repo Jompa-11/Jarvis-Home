@@ -4,6 +4,7 @@
     python -m jarvis --desktop    start in a native window (needs the optional 'pywebview' package)
     python -m jarvis check        validate configuration and show what is configured
     python -m jarvis diagnose     inspect this machine (hardware, devices, services)
+    python -m jarvis toolcheck    check that the local AI model uses JARVIS's tools (dry-run)
 """
 
 from __future__ import annotations
@@ -95,10 +96,11 @@ def _serve(cfg: JarvisConfig, desktop: bool, open_browser: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS home assistant")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose"])
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck"])
     parser.add_argument("--config", help="Path to jarvis.toml")
     parser.add_argument("--desktop", action="store_true", help="Open in a native window (pywebview)")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
+    parser.add_argument("--model", help="toolcheck: Ollama model to test (default: the configured one)")
     args = parser.parse_args(argv)
 
     load_dotenv(PROJECT_ROOT / ".env", override=False)
@@ -112,6 +114,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "check":
         return _check(cfg)
+    if args.command == "toolcheck":
+        from .toolcheck import format_report, run_toolcheck
+
+        model = args.model or cfg.ollama.model
+        print(f"Running tool-use check against Ollama model '{model}' (dry-run; nothing is changed)...")
+        results = asyncio.run(run_toolcheck(cfg, model=model))
+        if not results:
+            print("No checks ran.")
+            return 1
+        print(format_report(results, model))
+        return 0 if all(r.passed for r in results) else 1
     if args.command == "diagnose":
         from . import diagnostics
 
