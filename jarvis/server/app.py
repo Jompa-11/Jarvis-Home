@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .. import diagnostics
 from ..app_core import JarvisCore
+from ..voice.interfaces import VoiceError
 
 log = logging.getLogger(__name__)
 
@@ -35,10 +36,16 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 class ChatIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    # True when the text came from push-to-talk: the reply is then read aloud.
+    voice: bool = False
 
 
 class ConfirmIn(BaseModel):
     approve: bool
+
+
+class VoiceStartIn(BaseModel):
+    device: str | None = Field(None, max_length=200)
 
 
 def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[str] | None = None) -> FastAPI:
@@ -101,7 +108,7 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
 
     @app.post("/api/chat")
     async def chat(body: ChatIn) -> dict[str, Any]:
-        result = await core.orchestrator.handle(body.text)
+        result = await core.chat(body.text, voice_input=body.voice)
         if result.get("busy"):
             raise HTTPException(409, result["error"])
         return result
@@ -176,7 +183,47 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
             core.diagnostics = await asyncio.to_thread(diagnostics.collect, core.cfg.data_dir, envs)
         return core.diagnostics
 
+    # -- push-to-talk ----------------------------------------------------------------
+    # The UI calls start when the microphone button is pressed and stop when it
+    # is released. The transcript comes back to the UI, which sends it as a
+    # normal chat message, so voice and typed requests take the same path.
+    @app.get("/api/voice/devices")
+    async def voice_devices() -> dict[str, Any]:
+        try:
+            devices = await core.voice.devices()
+        except Exception as exc:
+            raise HTTPException(503, f"Could not list microphones: {exc}") from exc
+        return {"selected": core.settings.current.microphone_device, "devices": devices}
+
+    @app.post("/api/voice/start")
+    async def voice_start(body: VoiceStartIn | None = None) -> dict[str, Any]:
+        device = (body.device if body and body.device else None) or core.settings.current.microphone_device
+        try:
+            await core.voice.begin_capture(device)
+        except VoiceError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return core.voice.status()
+
+    @app.post("/api/voice/stop")
+    async def voice_stop() -> dict[str, Any]:
+        try:
+            transcript, duration = await core.voice.end_capture()
+        except VoiceError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"text": transcript.text, "language": transcript.language, "confidence": transcript.confidence, "audio_s": duration}
+
+    @app.post("/api/voice/cancel")
+    async def voice_cancel() -> dict[str, bool]:
+        return {"cancelled": await core.voice.cancel_capture()}
+
+    @app.post("/api/voice/interrupt")
+    async def voice_interrupt() -> dict[str, bool]:
+        """Stop reading a reply aloud. Works even with the microphone switched off."""
+        return {"interrupted": await core.voice.interrupt_speech()}
+
     # -- live events -------------------------------------------------------------
+    app.state.ws_clients = 0
+
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin", "")
@@ -187,6 +234,7 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
             return
         await websocket.accept()
         queue = core.bus.subscribe()
+        app.state.ws_clients += 1
         try:
             await websocket.send_json({"type": "state", "data": await core.snapshot()})
             while True:
@@ -196,5 +244,9 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
             pass
         finally:
             core.bus.unsubscribe(queue)
+            app.state.ws_clients -= 1
+            if app.state.ws_clients == 0 and core.voice.capturing:
+                # The page that held the button is gone, so nobody is holding it.
+                await core.voice.cancel_capture("The interface disconnected; the microphone was closed.")
 
     return app

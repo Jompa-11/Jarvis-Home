@@ -1,11 +1,12 @@
 /* Central AI visualization.
    Purely presentational: its state is set by app.js from real backend events.
-   States: offline | standby | processing | awaiting | speaking | error */
+   States: offline | standby | listening | processing | awaiting | speaking | error */
 (function () {
   "use strict";
 
   const PALETTES = {
     standby:    { core: [95, 227, 255], ring: [42, 140, 255], energy: 0.35, speed: 1.0 },
+    listening:  { core: [255, 120, 150], ring: [255, 80, 120], energy: 0.7, speed: 1.2 },
     processing: { core: [120, 236, 255], ring: [70, 170, 255], energy: 0.95, speed: 3.2 },
     speaking:   { core: [140, 240, 255], ring: [80, 190, 255], energy: 0.75, speed: 1.6 },
     awaiting:   { core: [255, 190, 90], ring: [255, 160, 60], energy: 0.6, speed: 0.8 },

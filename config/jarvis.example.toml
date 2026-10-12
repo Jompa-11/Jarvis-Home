@@ -104,8 +104,24 @@ description = "File Explorer"
 [privacy]
 local_only = false
 cloud_max_sensitivity = "normal"   # "normal" or "personal"
-microphone_enabled = false
+microphone_enabled = false      # push-to-talk can only open the microphone when this is on
 camera_enabled = false
+
+# -------------------------------------------------------------- Voice ----
+# Push-to-talk: the microphone is open only while you hold the button in the
+# interface. Speech recognition (Whisper) and speech output (Piper) run locally.
+# Audio is kept in memory and is never written to disk or sent to the cloud.
+# Install: .\scripts\setup.ps1 -Voice   then   python -m jarvis voice-models --download
+[voice]
+# enabled: omit for automatic (on when the packages and models are installed)
+input_device = "Microphone (Realtek(R) Audio)"   # default; choose another in Settings
+max_capture_s = 30                 # the microphone closes after this even if the button is held
+stt_model = "large-v3-turbo"       # or "small" / "medium" (under data/models/whisper)
+stt_device = "auto"                # "auto" = NVIDIA GPU when available, else CPU
+stt_compute_type = "int8_float16"
+stt_languages = ["sv", "en"]
+tts_voice_sv = "sv_SE-nst-medium"  # Piper voice under data/models/piper
+tts_voice_en = "en_GB-alan-medium" # used for English replies when downloaded, else the Swedish voice
 
 [retention]
 max_conversation_messages = 60
