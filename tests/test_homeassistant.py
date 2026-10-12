@@ -81,6 +81,7 @@ async def test_volume_is_set_and_verified(fake_ha, monkeypatch):
     sonos = SonosService(client(fake_ha, monkeypatch), verify_delay_s=0.01, verify_timeout_s=0.2)
     out = await sonos.set_volume("Kitchen", 35, dry_run=False)
     assert out["verified"] is True and out["volume"] == 35
+    assert sonos.cached_speakers()[0].volume == 35  # UI view follows the device
     assert fake_ha.state.calls == [{"service": "media_player.volume_set", "data": {"entity_id": "media_player.kitchen", "volume_level": 0.35}}]
 
 

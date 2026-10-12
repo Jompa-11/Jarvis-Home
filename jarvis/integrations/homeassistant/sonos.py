@@ -171,7 +171,12 @@ class SonosService:
     async def refresh(self, entity_id: str) -> Speaker:
         state = await self.ha.get_state(entity_id)
         area = next((s.area for s in self.cached_speakers() if s.entity_id == entity_id), None)
-        return speaker_from_state(state, area)
+        speaker = speaker_from_state(state, area)
+        if self._cache:
+            # Keep the cached view (shown in the UI) in step with the device.
+            ts, speakers, sensors = self._cache
+            self._cache = (ts, [speaker if s.entity_id == entity_id else s for s in speakers], sensors)
+        return speaker
 
     # -- favorites ---------------------------------------------------------------
     async def favorites(self) -> dict[str, str]:
@@ -231,7 +236,9 @@ class SonosService:
             return {"speaker": sp.name, "would_call": call, "current_state": sp.state}
         await self.ha.call_service("media_player", service, {"entity_id": sp.entity_id})
         if expected is None:
-            return {"speaker": sp.name, "action": action, "verified": None}
+            await asyncio.sleep(self._verify_delay_s)
+            latest = await self.refresh(sp.entity_id)
+            return {"speaker": sp.name, "action": action, "now_playing": latest.media_title, "verified": None}
         ok, latest = await self._wait_for(sp.entity_id, lambda s: s.state in expected)
         return {"speaker": sp.name, "action": action, "state": latest.state if latest else None, "verified": ok}
 

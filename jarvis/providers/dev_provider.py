@@ -81,6 +81,20 @@ def _summarize(tool_name: str | None, content: str, is_error: bool) -> str:
         return f"{LABEL}\nI found {len(speakers)} speaker(s):\n" + "\n".join(lines)
     if tool_name == "system_get_time" and isinstance(data, dict):
         return f"{LABEL}\nIt is {data.get('local_time')}."
+    verified = payload.get("verified")
+    check = " (verified on the device)" if verified is True else " (could not be verified)" if verified is False else ""
+    if tool_name == "sonos_set_volume" and isinstance(data, dict):
+        if payload.get("dry_run"):
+            return f"{LABEL}\n{prefix}would set {data.get('speaker')} to {data['would_call'].get('volume_level', 0) * 100:.0f}%."
+        return f"{LABEL}\n{data.get('speaker')} volume is now {data.get('volume')}%{check}."
+    if tool_name == "sonos_playback" and isinstance(data, dict):
+        if payload.get("dry_run"):
+            return f"{LABEL}\n{prefix}would call {data['would_call']['service']} on {data.get('speaker')}."
+        return f"{LABEL}\n{data.get('speaker')}: {data.get('action')} sent, state is now {data.get('state') or 'unknown'}{check}."
+    if tool_name == "computer_open_app" and isinstance(data, dict):
+        if payload.get("dry_run"):
+            return f"{LABEL}\n{prefix}would open {data.get('app')} ({' '.join(data.get('would_run', []))})."
+        return f"{LABEL}\nOpened {data.get('app')}."
     return f"{LABEL}\n{prefix}{tool_name} completed:\n{json.dumps(data, ensure_ascii=False, indent=2)[:1500]}"
 
 

@@ -264,7 +264,7 @@ button, input, select { font: inherit; color: inherit; }
 .tool { padding: 10px 0; border-top: 1px solid rgba(90, 190, 255, 0.07); animation: rise .25s ease-out both; }
 .tool:first-child { border-top: 0; padding-top: 0; }
 .tool-head { display: flex; align-items: center; gap: 8px; }
-.tool-name { font: 12px var(--mono); color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-name { font: 12px/1.5 var(--mono); color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-time { font: 10.5px var(--mono); color: var(--text-faint); }
 .pill { font: 600 9.5px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 6px; border-radius: 3px; background: rgba(95, 200, 255, 0.08); color: var(--text-dim); white-space: nowrap; }
 .pill.succeeded { color: var(--cyan); background: var(--cyan-soft); }
@@ -319,7 +319,8 @@ button, input, select { font: inherit; color: inherit; }
 .field { display: grid; gap: 6px; margin-bottom: 12px; font-size: 13px; color: var(--text-dim); }
 select {
   appearance: none; padding: 9px 12px; border-radius: 4px; border: 1px solid var(--line-strong);
-  background: #04101f; color: var(--text); cursor: pointer;
+  background: #04101f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%235fe3ff' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 12px center / 11px 8px;
+  padding-right: 34px; color: var(--text); cursor: pointer;
 }
 .note { font-size: 12px; color: var(--text-faint); margin: 4px 0 0; line-height: 1.5; }
 .toggle { display: grid; grid-template-columns: 38px 1fr; gap: 12px; align-items: start; margin-bottom: 14px; cursor: pointer; }

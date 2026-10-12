@@ -81,6 +81,7 @@ class JarvisCore:
         self.sonos_error: str | None = None
         self.diagnostics: dict[str, Any] | None = None
         self._bg: asyncio.Task | None = None
+        self._state_watch: asyncio.Task | None = None
 
     def _privacy(self) -> PrivacyConfig:
         st = self.settings.current
@@ -90,16 +91,18 @@ class JarvisCore:
     async def start(self) -> None:
         await self.refresh_integrations()
         self._bg = asyncio.create_task(self._health_loop(), name="jarvis-health")
+        self._state_watch = asyncio.create_task(self._push_state_after_actions(), name="jarvis-state-watch")
         log.info("JARVIS core started")
 
     async def stop(self) -> None:
         self.orchestrator.cancel()
-        if self._bg:
-            self._bg.cancel()
-            try:
-                await self._bg
-            except asyncio.CancelledError:
-                pass
+        for task in (self._bg, self._state_watch):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         await self.ha.aclose()
         for p in self.router.providers.values():
             try:
@@ -115,6 +118,18 @@ class JarvisCore:
                 await self.refresh_integrations()
             except Exception:
                 log.exception("Health refresh failed")
+
+    async def _push_state_after_actions(self) -> None:
+        # After a tool finishes, publish a fresh snapshot so panels such as the
+        # audio zones show the device state the action produced.
+        queue = self.bus.subscribe()
+        try:
+            while True:
+                ev = await queue.get()
+                if ev["type"] == "tool.updated" and ev["data"].get("finished_at"):
+                    self.bus.publish("state", await self.snapshot())
+        finally:
+            self.bus.unsubscribe(queue)
 
     async def refresh_integrations(self) -> None:
         await self.ha.check()

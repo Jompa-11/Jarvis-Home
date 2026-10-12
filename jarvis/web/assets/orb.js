@@ -79,8 +79,8 @@
       const { ctx, w, h, cur } = this;
       ctx.clearRect(0, 0, w, h);
       const cx = w / 2;
-      const cy = h / 2 - 10;
-      const R = Math.min(w, h) * 0.36;
+      const cy = h / 2 - 16;
+      const R = Math.min(w, h) * 0.32;
       const e = cur.energy;
       const t = this.t;
       const pulse = 0.5 + 0.5 * Math.sin(t * 2.2);
