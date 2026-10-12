@@ -138,6 +138,7 @@ async def test_ollama_health_and_chat():
             return httpx.Response(200, json={"models": [{"name": "qwen2.5:3b"}]})
         body = json.loads(request.content)
         assert body["messages"][0]["role"] == "system" and body["tools"][0]["function"]["name"] == "sonos_set_volume"
+        assert body["options"] == {"num_ctx": 8192}
         return httpx.Response(200, json={
             "message": {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "sonos_set_volume", "arguments": {"level": 20}}}]},
             "done_reason": "stop", "prompt_eval_count": 50, "eval_count": 8,
