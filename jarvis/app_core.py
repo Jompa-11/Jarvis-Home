@@ -70,7 +70,10 @@ class JarvisCore:
         self.registry = ToolRegistry()
         register_system_tools(self.registry, self)
         register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
-        register_computer_tools(self.registry, self.windows)
+        if self.windows.enabled:
+            # Desktop control is platform-specific; a headless backend (e.g. a
+            # Raspberry Pi) runs without it and never offers these tools.
+            register_computer_tools(self.registry, self.windows)
 
         self.policy = PermissionPolicy()
         self.confirmations = ConfirmationManager(self.bus)

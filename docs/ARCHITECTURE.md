@@ -55,7 +55,9 @@ allowlist. `SonosService` discovers speakers with `integration_entities('sonos')
 areas, and gates every action on `supported_features`. It then reads state back to set
 `verified: true/false`. Announcements and track skips cannot be verified, so they report `verified: null`.
 
-**E. Computer control** — `jarvis/computer/windows.py`. It can launch apps from a config allowlist
+**E. Computer control** — `jarvis/computer/windows.py`. Registered only where it can work
+(`computer.enabled`, automatic = Windows only), so a headless backend such as a Raspberry Pi never offers
+these tools to the model; the rest of the backend is platform-neutral. It can launch apps from a config allowlist
 (the model picks a key; the command line comes from config; `shell=False`), list window titles, and focus
 a window. Dry-run is on by default. There is no shell, no file access, no input injection and no elevation.
 
@@ -96,4 +98,7 @@ A new capability = a module that registers `ToolSpec`s. The core does not change
   Live state push from HA can move to its WebSocket API later.
 * **Default cloud model `claude-opus-5-5` at low effort**, with a budget cap. Per-category routes let you
   move simple device commands to `claude-haiku-5-5` or to Ollama.
+* **Settings precedence**: `config/jarvis.toml` provides defaults; only values changed in the UI are stored in
+  `data/settings.json` and override them.
+* **Pinned dependencies**: `requirements*.lock` (universal, hash-checked) for reproducible Windows and Pi installs.
 * **No persistence of conversations** until a memory design with retention controls exists (Phase 8).

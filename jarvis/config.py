@@ -71,17 +71,40 @@ def _default_routes() -> dict[str, list[ModelRoute]]:
 
 
 class ModelPrice(BaseModel):
+    """USD per million tokens. Cache prices default to Anthropic's standard
+    multipliers (writes 1.25x, reads 0.1x input) when not given."""
+
     input_per_mtok: float = Field(ge=0)
     output_per_mtok: float = Field(ge=0)
+    cache_write_per_mtok: float | None = Field(None, ge=0)  # 5-minute cache writes
+    cache_read_per_mtok: float | None = Field(None, ge=0)
+    # Some models charge more for long prompts (Claude Haiku 5.5: over 100,000
+    # tokens, counting input, cache reads and cache writes).
+    long_prompt_threshold_tokens: int | None = Field(None, gt=0)
+    long_prompt: "ModelPrice | None" = None
 
 
 def _default_pricing() -> dict[str, ModelPrice]:
-    # USD per million tokens, Anthropic first-party rates (cached 2026-10).
+    # Anthropic first-party rates, verified 2026-10-12 against
+    # https://platform.claude.com/docs/en/about-claude/pricing
     # Update here if prices change; costs shown in the UI are estimates.
     return {
-        "claude-opus-5-5": ModelPrice(input_per_mtok=4.00, output_per_mtok=20.00),
-        "claude-sonnet-5-5": ModelPrice(input_per_mtok=2.00, output_per_mtok=10.00),
-        "claude-haiku-5-5": ModelPrice(input_per_mtok=0.10, output_per_mtok=0.50),
+        "claude-opus-5-5": ModelPrice(
+            input_per_mtok=4.00, output_per_mtok=20.00, cache_write_per_mtok=5.00, cache_read_per_mtok=0.20
+        ),
+        "claude-sonnet-5-5": ModelPrice(
+            input_per_mtok=2.00, output_per_mtok=10.00, cache_write_per_mtok=2.50, cache_read_per_mtok=0.10
+        ),
+        "claude-haiku-5-5": ModelPrice(
+            input_per_mtok=0.10,
+            output_per_mtok=0.50,
+            cache_write_per_mtok=0.125,
+            cache_read_per_mtok=0.01,
+            long_prompt_threshold_tokens=100_000,
+            long_prompt=ModelPrice(
+                input_per_mtok=0.50, output_per_mtok=2.50, cache_write_per_mtok=0.625, cache_read_per_mtok=0.05
+            ),
+        ),
     }
 
 
@@ -124,6 +147,9 @@ class AIConfig(BaseModel):
 
 class HomeAssistantConfig(BaseModel):
     enabled: bool = True
+    # Dry-run is on by default: speaker actions are described, not performed.
+    # Turn off here (or in Settings) once you have checked what JARVIS would do.
+    dry_run: bool = True
     url: str | None = None  # e.g. "http://homeassistant.local:8123"
     token_env: str = "HA_TOKEN"
     verify_ssl: bool = True
@@ -170,6 +196,10 @@ def _default_apps() -> dict[str, AppEntry]:
 
 
 class ComputerConfig(BaseModel):
+    # Whether the computer-control tools are offered to the AI at all.
+    # None = automatic: on for Windows, off elsewhere (for example on a
+    # Raspberry Pi backend, where there is no desktop to control).
+    enabled: bool | None = None
     # Dry-run is on by default: actions are described, not performed.
     dry_run: bool = True
     allowed_apps: dict[str, AppEntry] = Field(default_factory=_default_apps)

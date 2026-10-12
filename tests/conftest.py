@@ -58,7 +58,9 @@ def make_config(tmp_path: Path, **overrides: Any) -> JarvisConfig:
     raw: dict[str, Any] = {
         "data_dir": str(tmp_path / "data"),
         "ai": {"routes": {"conversation": [{"provider": "anthropic", "model": "claude-opus-5-5"}, {"provider": "ollama"}, {"provider": "dev"}]}},
-        "homeassistant": {"url": "http://ha.test", "timeout_s": 2},
+        # Tests exercise real (fake-HA) calls; dry-run behaviour is tested explicitly.
+        "homeassistant": {"url": "http://ha.test", "timeout_s": 2, "dry_run": False},
+        "computer": {"enabled": True},
         "profiles": [
             {"id": "owner", "name": "Alex", "role": "owner"},
             {"id": "kid", "name": "Sam", "role": "child"},

@@ -121,10 +121,20 @@ class DevProvider(AIProvider):
         call = match_intent(text, available)
         if call is not None:
             return self._reply("", [call])
+        examples = [
+            ex
+            for tool, ex in (
+                ("sonos_list_speakers", '"list speakers"'),
+                ("sonos_set_volume", '"volume 30 in kitchen"'),
+                ("sonos_playback", '"pause in living room"'),
+                ("computer_open_app", '"open notepad"'),
+                ("system_get_status", '"system status"'),
+            )
+            if tool in available
+        ]
         return self._reply(
             f"{LABEL}\nI can only handle simple commands in this mode, for example: "
-            "\"list speakers\", \"volume 30 in kitchen\", \"pause in living room\", "
-            "\"open notepad\", \"system status\". Configure Claude or Ollama for natural conversation.",
+            f"{', '.join(examples)}. Configure Claude or Ollama for natural conversation.",
             [],
         )
 

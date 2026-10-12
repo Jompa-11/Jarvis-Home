@@ -16,7 +16,8 @@ from .base import Usage
 
 log = logging.getLogger(__name__)
 
-# Cache pricing multipliers relative to the base input price (5-minute cache).
+# Fallback cache multipliers relative to the input price, used when a model's
+# price entry does not list cache prices explicitly (5-minute cache).
 CACHE_READ_FACTOR = 0.1
 CACHE_WRITE_FACTOR = 1.25
 
@@ -24,14 +25,17 @@ CACHE_WRITE_FACTOR = 1.25
 def estimate_cost(usage: Usage, price: ModelPrice | None) -> float | None:
     if price is None:
         return None
-    per_in = price.input_per_mtok / 1_000_000
-    per_out = price.output_per_mtok / 1_000_000
+    prompt_tokens = usage.input_tokens + usage.cache_read_tokens + usage.cache_write_tokens
+    if price.long_prompt and price.long_prompt_threshold_tokens and prompt_tokens > price.long_prompt_threshold_tokens:
+        price = price.long_prompt
+    read = price.cache_read_per_mtok if price.cache_read_per_mtok is not None else price.input_per_mtok * CACHE_READ_FACTOR
+    write = price.cache_write_per_mtok if price.cache_write_per_mtok is not None else price.input_per_mtok * CACHE_WRITE_FACTOR
     return (
-        usage.input_tokens * per_in
-        + usage.cache_read_tokens * per_in * CACHE_READ_FACTOR
-        + usage.cache_write_tokens * per_in * CACHE_WRITE_FACTOR
-        + usage.output_tokens * per_out
-    )
+        usage.input_tokens * price.input_per_mtok
+        + usage.cache_read_tokens * read
+        + usage.cache_write_tokens * write
+        + usage.output_tokens * price.output_per_mtok
+    ) / 1_000_000
 
 
 class UsageTracker:

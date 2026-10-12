@@ -136,8 +136,9 @@
 
     const c = s.computer;
     let cd = "ok", cv = "Live", cc = "ok", cdetail = `${c.allowed_apps.length} approved apps`;
-    if (!c.platform_supported) { cd = "off"; cv = "N/A"; cc = ""; cdetail = "Windows-only; dry-run available"; }
-    if (c.dry_run) { cd = "warn"; cv = "Dry-run"; cc = "warn"; }
+    if (!c.enabled) { cd = "off"; cv = "Off"; cc = ""; cdetail = c.platform_supported ? "Disabled in configuration" : "Not available on this platform"; }
+    else if (!c.platform_supported) { cdetail = "Windows-only; dry-run available"; cd = "off"; cv = "N/A"; cc = ""; }
+    if (c.enabled && c.dry_run) { cd = "warn"; cv = "Dry-run"; cc = "warn"; }
     list.appendChild(statusRow(cd, "Computer control", cdetail, cv, cc));
   }
 

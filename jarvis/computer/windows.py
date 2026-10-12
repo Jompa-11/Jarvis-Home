@@ -46,8 +46,14 @@ class WindowsControl:
     def supported(self) -> bool:
         return IS_WINDOWS
 
+    @property
+    def enabled(self) -> bool:
+        """Whether the computer-control tools should be registered at all."""
+        return self.supported if self.cfg.enabled is None else self.cfg.enabled
+
     def status(self) -> dict[str, Any]:
         return {
+            "enabled": self.enabled,
             "platform_supported": self.supported,
             "platform": sys.platform,
             "allowed_apps": sorted(self.cfg.allowed_apps),

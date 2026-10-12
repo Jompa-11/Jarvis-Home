@@ -2,7 +2,7 @@
 .SYNOPSIS
   One-time setup of JARVIS on Windows 11.
 .DESCRIPTION
-  Creates a Python virtual environment in .venv, installs dependencies,
+  Creates a Python virtual environment in .venv, installs pinned dependencies,
   and creates local config files from the examples if they do not exist.
   Changes nothing outside the project folder.
 .PARAMETER Desktop
@@ -41,9 +41,12 @@ if (-not (Test-Path '.venv\Scripts\python.exe')) {
 $venvPy = Join-Path $Root '.venv\Scripts\python.exe'
 
 & $venvPy -m pip install --upgrade pip --quiet
-$req = if ($Dev) { 'requirements-dev.txt' } else { 'requirements.txt' }
-Write-Host "Installing $req ..."
-& $venvPy -m pip install -r $req --quiet
+# Lock files pin exact versions and their SHA-256 hashes; pip refuses any
+# package whose contents do not match.
+$req = if ($Dev) { 'requirements-dev.lock' } else { 'requirements.lock' }
+Write-Host "Installing pinned dependencies from $req ..."
+& $venvPy -m pip install --require-hashes -r $req --quiet
+if ($LASTEXITCODE -ne 0) { Write-Host 'Dependency installation failed.' -ForegroundColor Red; exit 1 }
 if ($Desktop) {
     Write-Host 'Installing pywebview for the desktop window...'
     & $venvPy -m pip install 'pywebview>=5.0' --quiet

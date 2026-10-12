@@ -53,3 +53,22 @@ def test_focus_window_matching(monkeypatch):
     assert focused == []
     assert wc.focus_window("outlook", dry_run=False) == {"focused": "Inbox - Outlook", "verified": True}
     assert focused == [2]
+
+
+def test_tools_registered_only_where_supported(tmp_path, monkeypatch):
+    from conftest import make_config
+
+    from jarvis.app_core import JarvisCore
+
+    def tool_names(**computer):
+        cfg = make_config(tmp_path, computer={"enabled": None, **computer})
+        return {t.name for t in JarvisCore(cfg, persist=False).registry.all()}
+
+    monkeypatch.setattr(windows, "IS_WINDOWS", False)  # e.g. Raspberry Pi
+    assert not any(n.startswith("computer_") for n in tool_names())
+    assert "sonos_set_volume" in tool_names() and "system_get_status" in tool_names()
+    assert "computer_open_app" in tool_names(enabled=True)  # explicit opt-in (dry-run only)
+
+    monkeypatch.setattr(windows, "IS_WINDOWS", True)
+    assert "computer_open_app" in tool_names()
+    assert not any(n.startswith("computer_") for n in tool_names(enabled=False))

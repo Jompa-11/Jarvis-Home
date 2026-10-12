@@ -79,6 +79,10 @@ class Orchestrator:
         self._lock = asyncio.Lock()
         self._active_task: asyncio.Task | None = None
         self._active_request: str | None = None
+        # Set by cancel(). Checked between steps as well as delivered as a task
+        # cancellation, because on Python 3.11 asyncio.wait_for can swallow a
+        # cancellation that races with the awaited result.
+        self._cancel_requested = False
 
     # -- state -------------------------------------------------------------
     def _set_status(self, status: str, **extra: Any) -> None:
@@ -106,6 +110,7 @@ class Orchestrator:
             request_id = uuid.uuid4().hex[:12]
             self._active_request = request_id
             self._active_task = asyncio.current_task()
+            self._cancel_requested = False
             try:
                 return await self._run_turn(request_id, text)
             except asyncio.CancelledError:
@@ -121,12 +126,16 @@ class Orchestrator:
         task = self._active_task
         if task is None or task.done():
             return False
+        self._cancel_requested = True
+        task.cancel()
         if self._active_request:
             self.executor.confirmations.cancel_for_request(self._active_request)
-        task.cancel()
         return True
 
     # -- internals ---------------------------------------------------------
+    def _raise_if_cancelled(self) -> None:
+        if self._cancel_requested:
+            raise asyncio.CancelledError
     def _close_dangling_tool_calls(self, reason: str) -> None:
         """Keep the transcript valid: every tool call must have a result."""
         msgs = self.conversation.messages
@@ -178,6 +187,7 @@ class Orchestrator:
 
         try:
             for _round in range(self.cfg.ai.max_tool_rounds):
+                self._raise_if_cancelled()
                 resp, info = await self.router.complete(
                     category=category,
                     system=self.system_prompt,
@@ -203,6 +213,7 @@ class Orchestrator:
                     break
 
                 for call in resp.tool_calls:
+                    self._raise_if_cancelled()
                     ex, result = await self.executor.execute(call, ctx, dry_cats)
                     executions.append(ex.id)
                     if SENSITIVITY_ORDER.get(result.sensitivity, 0) > SENSITIVITY_ORDER[turn_sensitivity]:

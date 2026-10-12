@@ -187,3 +187,15 @@ def test_dev_intents(text, tool, args):
 async def test_dev_provider_labels_output():
     resp = await DevProvider().complete(system="", messages=[ChatMessage(role="user", content="tell me a story")], tools=[], model=None, effort=None, timeout_s=1)
     assert resp.text.startswith("[Dev fallback") and resp.tool_calls == []
+
+
+async def test_dev_help_lists_only_available_commands():
+    from jarvis.core.tools import schema as _schema
+
+    def spec(name):
+        return ToolSpec(name, "d", _schema({}), _noop)
+
+    tools = [spec("system_get_status"), spec("sonos_list_speakers")]
+    resp = await DevProvider().complete(system="", messages=[ChatMessage(role="user", content="hello")], tools=tools, model=None, effort=None, timeout_s=1)
+    assert '"system status"' in resp.text and '"list speakers"' in resp.text
+    assert "notepad" not in resp.text

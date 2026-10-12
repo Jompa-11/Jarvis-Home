@@ -1,6 +1,10 @@
 # JARVIS configuration — copy to config/jarvis.toml and edit.
 # config/jarvis.toml is git-ignored. Never put secrets in this file:
 # API keys and tokens go in environment variables or the local .env file.
+#
+# Settings you change in the app's Settings panel are stored in data/settings.json
+# and take precedence over the same setting here. Switch a setting back in the
+# panel to hand control back to this file.
 
 assistant_name = "JARVIS"
 language = "auto"              # "auto" (reply in the user's language), "sv" or "en"
@@ -64,6 +68,7 @@ keep_alive = "10m"
 # ---------------------------------------------------- Home Assistant ----
 [homeassistant]
 enabled = true
+dry_run = true                 # simulate speaker actions; set false once you trust what JARVIS would do
 # url = "http://homeassistant.local:8123"
 token_env = "HA_TOKEN"
 verify_ssl = true
@@ -73,6 +78,8 @@ max_volume_without_confirmation = 60
 
 # ---------------------------------------------------- Computer control ----
 [computer]
+# enabled: omit for automatic (on for Windows, off on Linux / Raspberry Pi)
+# enabled = true
 dry_run = true                 # describe actions instead of performing them
 
 [computer.allowed_apps.notepad]
