@@ -1,0 +1,182 @@
+"""Composition root: builds every component and exposes one state snapshot."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from typing import Any
+
+import httpx
+
+from . import __version__
+from .computer.tools import register_computer_tools
+from .computer.windows import WindowsControl
+from .config import JarvisConfig, PrivacyConfig
+from .core.events import EventBus
+from .core.executor import ToolExecutor, ToolHistory
+from .core.orchestrator import Orchestrator
+from .core.permissions import ConfirmationManager, PermissionPolicy
+from .core.settings import SettingsStore
+from .core.tools import ToolRegistry
+from .integrations.homeassistant.client import HAError, HomeAssistantClient
+from .integrations.homeassistant.sonos import SonosError, SonosService
+from .integrations.homeassistant.tools import register_sonos_tools
+from .providers.anthropic_provider import AnthropicProvider
+from .providers.base import AIProvider
+from .providers.dev_provider import DevProvider
+from .providers.ollama_provider import OllamaProvider
+from .providers.router import ProviderRouter
+from .providers.usage import UsageTracker
+from .system_tools import register_system_tools
+from .voice.interfaces import VoiceController
+
+log = logging.getLogger(__name__)
+
+PRIVACY_KEYS = {"local_only", "cloud_max_sensitivity"}
+
+
+class JarvisCore:
+    HEALTH_INTERVAL_S = 30.0
+
+    def __init__(
+        self,
+        cfg: JarvisConfig,
+        *,
+        providers: dict[str, AIProvider] | None = None,
+        ha_transport: httpx.AsyncBaseTransport | None = None,
+        persist: bool = True,
+        sonos_verify_delay_s: float = 0.5,
+    ) -> None:
+        self.cfg = cfg
+        self.started_at = time.time()
+        data = cfg.data_dir if persist else None
+        self.bus = EventBus()
+        self.settings = SettingsStore(cfg, data / "settings.json" if data else None)
+        self.usage = UsageTracker(data / "usage.json" if data else None, cfg.ai.pricing, cfg.ai.monthly_budget_usd)
+        providers = providers or {
+            "anthropic": AnthropicProvider(cfg.anthropic),
+            "ollama": OllamaProvider(cfg.ollama),
+            "dev": DevProvider(),
+        }
+        self.router = ProviderRouter(providers, cfg.ai, self._privacy(), self.usage)
+
+        self.ha = HomeAssistantClient(cfg.homeassistant, transport=ha_transport)
+        self.sonos = SonosService(self.ha, verify_delay_s=sonos_verify_delay_s)
+        self.windows = WindowsControl(cfg.computer)
+        self.voice = VoiceController()
+        self.voice.set_enabled(self.settings.current.microphone_enabled)
+
+        self.registry = ToolRegistry()
+        register_system_tools(self.registry, self)
+        register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
+        register_computer_tools(self.registry, self.windows)
+
+        self.policy = PermissionPolicy()
+        self.confirmations = ConfirmationManager(self.bus)
+        self.history = ToolHistory(cfg.retention.tool_history_size)
+        self.executor = ToolExecutor(self.registry, self.policy, self.confirmations, self.history, self.bus)
+        self.orchestrator = Orchestrator(cfg, self.settings, self.router, self.registry, self.executor, self.policy, self.bus)
+
+        self.sonos_error: str | None = None
+        self.diagnostics: dict[str, Any] | None = None
+        self._bg: asyncio.Task | None = None
+
+    def _privacy(self) -> PrivacyConfig:
+        st = self.settings.current
+        return self.cfg.privacy.model_copy(update={"local_only": st.local_only, "cloud_max_sensitivity": st.cloud_max_sensitivity})
+
+    # -- lifecycle -----------------------------------------------------------
+    async def start(self) -> None:
+        await self.refresh_integrations()
+        self._bg = asyncio.create_task(self._health_loop(), name="jarvis-health")
+        log.info("JARVIS core started")
+
+    async def stop(self) -> None:
+        self.orchestrator.cancel()
+        if self._bg:
+            self._bg.cancel()
+            try:
+                await self._bg
+            except asyncio.CancelledError:
+                pass
+        await self.ha.aclose()
+        for p in self.router.providers.values():
+            try:
+                await p.aclose()
+            except Exception:
+                pass
+        log.info("JARVIS core stopped")
+
+    async def _health_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.HEALTH_INTERVAL_S)
+            try:
+                await self.refresh_integrations()
+            except Exception:
+                log.exception("Health refresh failed")
+
+    async def refresh_integrations(self) -> None:
+        await self.ha.check()
+        if self.ha.status.state == "connected":
+            try:
+                await self.sonos.discover(force=True)
+                self.sonos_error = None
+            except (HAError, SonosError) as exc:
+                self.sonos_error = str(exc)
+        for name in self.router.providers:
+            await self.router.health(name, force=True)
+        self.bus.publish("state", await self.snapshot())
+
+    # -- settings ------------------------------------------------------------
+    async def update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
+        st, changed = self.settings.update(patch)
+        if "microphone_enabled" in changed:
+            self.voice.set_enabled(st.microphone_enabled)
+        if changed & PRIVACY_KEYS:
+            self.router.set_privacy(self._privacy())
+        if changed & (PRIVACY_KEYS | {"active_profile"}):
+            # A different profile or privacy policy starts a fresh conversation,
+            # so earlier context is never reinterpreted under new rules.
+            self.orchestrator.reset_conversation()
+        self.bus.publish("state", await self.snapshot())
+        return st.model_dump()
+
+    # -- state -----------------------------------------------------------------
+    async def snapshot(self) -> dict[str, Any]:
+        st = self.settings.current
+        providers = await self.router.status()
+        chain = self.cfg.ai.routes["conversation"]
+        speakers = [s.public() for s in self.sonos.cached_speakers()]
+        ha_state = self.ha.status.state
+        if ha_state != "connected":
+            sonos_state, sonos_detail = "unavailable", "Requires a Home Assistant connection."
+        elif self.sonos_error:
+            sonos_state, sonos_detail = "error", self.sonos_error
+        elif not speakers:
+            sonos_state, sonos_detail = "no_speakers", "No Sonos speakers found in Home Assistant."
+        else:
+            sonos_state, sonos_detail = "ok", f"{len(speakers)} speaker(s) discovered."
+        profile = self.cfg.profile(st.active_profile)
+        return {
+            "core": {"version": __version__, "started_at": self.started_at, "status": "online"},
+            "ai": {
+                "status": self.orchestrator.status,
+                "last_error": self.orchestrator.last_error,
+                "primary": {"provider": chain[0].provider, "model": chain[0].model},
+                "providers": providers,
+                "usage": self.usage.summary(),
+            },
+            "integrations": {
+                "homeassistant": self.ha.status.public(),
+                "sonos": {"state": sonos_state, "detail": sonos_detail, "speakers": speakers},
+            },
+            "voice": self.voice.status(),
+            "camera": {"state": "not_implemented", "master_switch": "on" if st.camera_enabled else "off"},
+            "computer": {**self.windows.status(), "dry_run": st.dry_run_computer},
+            "settings": st.model_dump(),
+            "profiles": [p.model_dump() for p in self.cfg.profiles],
+            "active_profile": profile.model_dump() if profile else None,
+            "pending_confirmations": self.confirmations.pending(),
+            "conversation": {"id": self.orchestrator.conversation.id, "busy": self.orchestrator.busy},
+        }

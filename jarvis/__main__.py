@@ -1,0 +1,125 @@
+"""Command-line entry point.
+
+    python -m jarvis              start the server and open the interface in the browser
+    python -m jarvis --desktop    start in a native window (needs the optional 'pywebview' package)
+    python -m jarvis check        validate configuration and show what is configured
+    python -m jarvis diagnose     inspect this machine (hardware, devices, services)
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import sys
+import threading
+import time
+import webbrowser
+
+from dotenv import load_dotenv
+
+from .config import PROJECT_ROOT, ConfigError, JarvisConfig, load_config
+from .logging_utils import setup_logging
+
+log = logging.getLogger("jarvis")
+
+
+def _check(cfg: JarvisConfig) -> int:
+    from .app_core import JarvisCore
+
+    async def run() -> dict:
+        core = JarvisCore(cfg, persist=False)
+        try:
+            await core.refresh_integrations()
+            return await core.snapshot()
+        finally:
+            await core.stop()
+
+    snap = asyncio.run(run())
+    print("Configuration: OK")
+    print(f"  Data directory : {cfg.data_dir}")
+    print(f"  Server         : http://{cfg.server.host}:{cfg.server.port}")
+    print("  AI providers   :")
+    for p in snap["ai"]["providers"]:
+        mark = "available  " if p["available"] else "unavailable"
+        print(f"    - {p['name']:<9} [{p['kind']:<5}] {mark} {p['detail']}")
+    route = " -> ".join(r.provider + (f" ({r.model})" if r.model else "") for r in cfg.ai.routes["conversation"])
+    print(f"  Conversation route : {route}")
+    ha = snap["integrations"]["homeassistant"]
+    print(f"  Home Assistant : {ha['state']} — {ha['detail']}")
+    so = snap["integrations"]["sonos"]
+    print(f"  Sonos          : {so['state']} — {so['detail']}")
+    print(f"  Microphone     : {snap['voice']['mic_state']} (master switch {snap['voice']['master_switch']})")
+    print(f"  Computer control: dry-run={'on' if snap['computer']['dry_run'] else 'off'}, platform supported={snap['computer']['platform_supported']}")
+    return 0
+
+
+def _serve(cfg: JarvisConfig, desktop: bool, open_browser: bool) -> int:
+    import uvicorn
+
+    from .app_core import JarvisCore
+    from .server.app import create_app
+
+    core = JarvisCore(cfg)
+    app = create_app(core)
+    url = f"http://{cfg.server.host}:{cfg.server.port}/"
+    server = uvicorn.Server(uvicorn.Config(app, host=cfg.server.host, port=cfg.server.port, log_level="warning", log_config=None))
+
+    if desktop:
+        try:
+            import webview  # type: ignore[import-not-found]
+        except ImportError:
+            print("pywebview is not installed; opening in the browser instead (pip install pywebview).")
+            desktop = False
+
+    if not desktop:
+        if open_browser:
+            threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+        print(f"JARVIS running at {url}  (Ctrl+C to stop)")
+        server.run()
+        return 0
+
+    thread = threading.Thread(target=server.run, name="jarvis-server", daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.1)
+    webview.create_window("J.A.R.V.I.S.", url, width=1480, height=920, min_size=(980, 640), background_color="#02060d")
+    webview.start()
+    server.should_exit = True
+    thread.join(timeout=10)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS home assistant")
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose"])
+    parser.add_argument("--config", help="Path to jarvis.toml")
+    parser.add_argument("--desktop", action="store_true", help="Open in a native window (pywebview)")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
+    args = parser.parse_args(argv)
+
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+    try:
+        cfg = load_config(args.config)
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    setup_logging(cfg.logging.level, cfg.data_dir / "logs" if cfg.logging.to_file and args.command == "run" else None)
+
+    if args.command == "check":
+        return _check(cfg)
+    if args.command == "diagnose":
+        from . import diagnostics
+
+        envs = {"anthropic_api_key": cfg.anthropic.api_key_env, "home_assistant_token": cfg.homeassistant.token_env}
+        print(json.dumps(diagnostics.collect(cfg.data_dir, envs), indent=2))
+        return 0
+    return _serve(cfg, args.desktop, cfg.server.open_browser and not args.no_browser)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

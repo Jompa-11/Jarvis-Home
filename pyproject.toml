@@ -1,0 +1,12 @@
+[project]
+name = "jarvis-home"
+version = "0.1.0"
+description = "JARVIS — personal, privacy-first home assistant (Phase 1: core, hybrid AI, Home Assistant/Sonos)"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore::DeprecationWarning"]

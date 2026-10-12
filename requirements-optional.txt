@@ -1,0 +1,5 @@
+# Optional extras — install only what you need.
+# Native desktop window (uses Microsoft Edge WebView2, built into Windows 11):
+pywebview>=5.0
+# Store secrets in Windows Credential Manager instead of environment variables:
+keyring>=25.0

@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from fake_ha import create_fake_ha  # noqa: E402
+
+from jarvis.app_core import JarvisCore  # noqa: E402
+from jarvis.config import JarvisConfig  # noqa: E402
+from jarvis.providers.base import AIProvider, ProviderHealth, ProviderResponse, ToolCall, Usage  # noqa: E402
+
+HA_TOKEN = "test-token-abcdef123456"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_env(monkeypatch):
+    # Never touch real credentials or services from tests.
+    for var in ("ANTHROPIC_API_KEY", "HA_TOKEN", "HA_URL", "JARVIS_CONFIG", "JARVIS_PORT", "JARVIS_HOST"):
+        monkeypatch.delenv(var, raising=False)
+
+
+class ScriptedProvider(AIProvider):
+    """A fake model that returns pre-scripted responses and records requests."""
+
+    def __init__(self, name: str = "scripted", kind: str = "cloud", script: list[Any] | None = None, available: bool = True):
+        self.name = name
+        self.kind = kind  # type: ignore[assignment]
+        self.script = list(script or [])
+        self.available = available
+        self.requests: list[dict[str, Any]] = []
+
+    async def health(self) -> ProviderHealth:
+        return ProviderHealth(self.available, "scripted")
+
+    async def complete(self, *, system, messages, tools, model, effort, timeout_s) -> ProviderResponse:
+        self.requests.append({"system": system, "messages": list(messages), "tools": [t.name for t in tools], "model": model})
+        if not self.script:
+            return ProviderResponse("Done.", [], "end_turn", Usage(10, 5), self.name, model or "m")
+        step = self.script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        if callable(step):
+            step = step(messages)
+        if isinstance(step, str):
+            return ProviderResponse(step, [], "end_turn", Usage(10, 5), self.name, model or "m")
+        calls = [ToolCall(id=f"call_{i}_{len(self.requests)}", name=n, arguments=a) for i, (n, a) in enumerate(step)]
+        return ProviderResponse("", calls, "tool_use", Usage(10, 5), self.name, model or "m")
+
+
+def make_config(tmp_path: Path, **overrides: Any) -> JarvisConfig:
+    raw: dict[str, Any] = {
+        "data_dir": str(tmp_path / "data"),
+        "ai": {"routes": {"conversation": [{"provider": "anthropic", "model": "claude-opus-5-5"}, {"provider": "ollama"}, {"provider": "dev"}]}},
+        "homeassistant": {"url": "http://ha.test", "timeout_s": 2},
+        "profiles": [
+            {"id": "owner", "name": "Alex", "role": "owner"},
+            {"id": "kid", "name": "Sam", "role": "child"},
+            {"id": "guest", "name": "Guest", "role": "guest"},
+        ],
+    }
+    for k, v in overrides.items():
+        if isinstance(v, dict) and isinstance(raw.get(k), dict):
+            raw[k] = {**raw[k], **v}
+        else:
+            raw[k] = v
+    return JarvisConfig.model_validate(raw)
+
+
+@pytest.fixture
+def fake_ha():
+    return create_fake_ha(HA_TOKEN)
+
+
+@pytest.fixture
+def make_core(tmp_path, fake_ha, monkeypatch):
+    created: list[JarvisCore] = []
+
+    def _make(providers: dict[str, AIProvider] | None = None, *, ha_token: bool = True, **cfg_overrides) -> JarvisCore:
+        if ha_token:
+            monkeypatch.setenv("HA_TOKEN", HA_TOKEN)
+        cfg = make_config(tmp_path, **cfg_overrides)
+        core = JarvisCore(
+            cfg,
+            providers=providers,
+            ha_transport=httpx.ASGITransport(app=fake_ha),
+            persist=False,
+            sonos_verify_delay_s=0.01,
+        )
+        core.sonos._verify_timeout_s = 0.3
+        created.append(core)
+        return core
+
+    yield _make

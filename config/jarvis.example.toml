@@ -1,0 +1,122 @@
+# JARVIS configuration — copy to config/jarvis.toml and edit.
+# config/jarvis.toml is git-ignored. Never put secrets in this file:
+# API keys and tokens go in environment variables or the local .env file.
+
+assistant_name = "JARVIS"
+language = "auto"              # "auto" (reply in the user's language), "sv" or "en"
+
+[server]
+host = "127.0.0.1"             # loopback only
+port = 8765
+open_browser = true
+
+# ---------------------------------------------------------------- AI ----
+[ai]
+allow_dev_fallback = true      # rule-based stand-in when no model is reachable (always labelled)
+monthly_budget_usd = 10.0      # cloud calls pause when the estimated monthly cost reaches this
+request_timeout_s = 60
+max_tool_rounds = 6
+
+# Each task category tries providers in order. Categories are chosen locally
+# by keywords, so routing never costs a model call.
+# effort: low | medium | high — lower effort means fewer tokens and lower cost.
+[[ai.routes.conversation]]
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+[[ai.routes.conversation]]
+provider = "ollama"
+[[ai.routes.conversation]]
+provider = "dev"
+
+[[ai.routes.smart_home]]
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+# Cheaper alternative for simple device commands — uncomment to try:
+# model = "claude-haiku-5-5"
+[[ai.routes.smart_home]]
+provider = "ollama"
+[[ai.routes.smart_home]]
+provider = "dev"
+
+[[ai.routes.computer]]
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+[[ai.routes.computer]]
+provider = "ollama"
+[[ai.routes.computer]]
+provider = "dev"
+
+[anthropic]
+enabled = true
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens = 16000
+server_side_fallback = true    # retry refused requests on a fallback model server-side
+
+[ollama]
+enabled = true
+base_url = "http://127.0.0.1:11434"
+model = "qwen2.5:3b"           # small, tool-capable; try "qwen2.5:7b" on a machine with 16 GB+ RAM
+keep_alive = "10m"
+
+# ---------------------------------------------------- Home Assistant ----
+[homeassistant]
+enabled = true
+# url = "http://homeassistant.local:8123"
+token_env = "HA_TOKEN"
+verify_ssl = true
+timeout_s = 10
+# tts_entity = "tts.piper"     # auto-detected when unset
+max_volume_without_confirmation = 60
+
+# ---------------------------------------------------- Computer control ----
+[computer]
+dry_run = true                 # describe actions instead of performing them
+
+[computer.allowed_apps.notepad]
+command = ["notepad.exe"]
+description = "Notepad"
+
+[computer.allowed_apps.calculator]
+command = ["calc.exe"]
+description = "Calculator"
+
+[computer.allowed_apps.explorer]
+command = ["explorer.exe"]
+description = "File Explorer"
+
+# [computer.allowed_apps.spotify]
+# command = ["C:\\Users\\YOU\\AppData\\Roaming\\Spotify\\Spotify.exe"]
+# description = "Spotify"
+
+# ------------------------------------------------------------ Privacy ----
+[privacy]
+local_only = false
+cloud_max_sensitivity = "normal"   # "normal" or "personal"
+microphone_enabled = false
+camera_enabled = false
+
+[retention]
+max_conversation_messages = 60
+tool_history_size = 200
+
+[logging]
+level = "INFO"
+to_file = true
+log_conversation_content = false
+
+# ----------------------------------------------------------- Profiles ----
+# Roles: owner, adult, child, guest. Phase 1 does not verify identity.
+default_profile = "owner"
+
+[[profiles]]
+id = "owner"
+name = "Owner"
+role = "owner"
+
+# [[profiles]]
+# id = "kids"
+# name = "Kids"
+# role = "child"
