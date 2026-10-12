@@ -7,6 +7,12 @@ from .windows import ComputerError, WindowsControl
 
 
 def register_computer_tools(registry: ToolRegistry, wc: WindowsControl) -> None:
+    # The approved apps are spelled out in the schema (as an enum) and in the
+    # description, so even a small local model cannot pick an app that does
+    # not exist and does not need to guess what is available.
+    apps = sorted(wc.cfg.allowed_apps)
+    app_list = ", ".join(f"{k} ({wc.cfg.allowed_apps[k].description or k})" for k in apps)
+
     async def list_apps(args, ctx: ToolContext) -> ToolResult:
         return ToolResult(ok=True, data={"apps": wc.list_apps()})
 
@@ -34,7 +40,10 @@ def register_computer_tools(registry: ToolRegistry, wc: WindowsControl) -> None:
     registry.register(
         ToolSpec(
             name="computer_list_apps",
-            description="List the applications JARVIS is allowed to open.",
+            description=(
+                "List the applications JARVIS is allowed to open. Call this whenever the user asks which "
+                "programs or apps you can start; never answer that question from memory."
+            ),
             parameters=schema({}),
             handler=list_apps,
             risk=Risk.READ,
@@ -44,8 +53,16 @@ def register_computer_tools(registry: ToolRegistry, wc: WindowsControl) -> None:
     registry.register(
         ToolSpec(
             name="computer_open_app",
-            description="Open an approved application by its key from computer_list_apps.",
-            parameters=schema({"app": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$"}}, ["app"]),
+            description=(
+                f"Open an approved application on the PC. Approved apps: {app_list}. "
+                "Use the key, e.g. 'notepad' for Notepad (Swedish: Anteckningar)."
+            ),
+            parameters=schema(
+                {"app": {"type": "string", "enum": apps, "description": "Key of an approved app."}}
+                if apps
+                else {"app": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$"}},
+                ["app"],
+            ),
             handler=open_app,
             risk=Risk.MEDIUM,
             category="computer",

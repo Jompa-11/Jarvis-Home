@@ -65,6 +65,7 @@ base_url = "http://127.0.0.1:11434"
 model = "qwen2.5:3b"           # small, tool-capable; try "qwen2.5:7b" on a machine with 16 GB+ RAM
 keep_alive = "10m"             # how long the model stays in GPU memory after the last request
 num_ctx = 8192                 # context window; too small and Ollama silently forgets the start
+temperature = 0.2              # lower = more consistent tool use
 
 # ---------------------------------------------------- Home Assistant ----
 [homeassistant]

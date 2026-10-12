@@ -128,6 +128,8 @@ class OllamaConfig(BaseModel):
     # silently drops the oldest text when it overflows. 8192 fits a 7B model
     # comfortably in 8 GB of VRAM.
     num_ctx: int = Field(8192, ge=2048, le=131072)
+    # Lower temperature makes small models choose tools more consistently.
+    temperature: float = Field(0.2, ge=0, le=2)
 
 
 class AIConfig(BaseModel):
