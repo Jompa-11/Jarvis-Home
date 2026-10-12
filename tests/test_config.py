@@ -49,3 +49,15 @@ def test_env_overrides(tmp_path):
     cfg = load_config(tmp_path / "none.toml", env={"JARVIS_PORT": "9001", "HA_URL": "http://ha.local:8123/"})
     assert cfg.server.port == 9001
     assert cfg.homeassistant.url == "http://ha.local:8123"
+
+
+def test_ctrl_c_exits_cleanly(monkeypatch, capsys):
+    import jarvis.__main__ as entry
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(entry, "_serve", interrupted)
+    monkeypatch.setattr(entry, "setup_logging", lambda *a, **k: None)
+    assert entry.main(["run", "--no-browser"]) == 0
+    assert "JARVIS stopped." in capsys.readouterr().out

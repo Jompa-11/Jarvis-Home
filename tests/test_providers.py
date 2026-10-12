@@ -199,3 +199,17 @@ async def test_dev_help_lists_only_available_commands():
     resp = await DevProvider().complete(system="", messages=[ChatMessage(role="user", content="hello")], tools=tools, model=None, effort=None, timeout_s=1)
     assert '"system status"' in resp.text and '"list speakers"' in resp.text
     assert "notepad" not in resp.text
+
+
+def test_dev_status_summary_is_readable():
+    import json as _json
+
+    from jarvis.providers.dev_provider import _summarize
+
+    payload = {"ok": True, "data": {
+        "ai_providers": [{"name": "anthropic", "available": False, "detail": "Not configured"}, {"name": "dev", "available": True}],
+        "home_assistant": "not_configured", "sonos_speakers": 0, "microphone": "not_implemented",
+        "camera": "not_implemented", "dry_run": {"computer": True, "smart_home": True},
+    }}
+    text = _summarize("system_get_status", _json.dumps(payload), False)
+    assert "{" not in text and "Home Assistant: not configured" in text and "computer on, smart home on" in text
