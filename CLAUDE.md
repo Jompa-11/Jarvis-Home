@@ -44,12 +44,12 @@ regenerate the lock with the command at the top of the lock file (needs `uv`), a
 
 ## Status (2026-10-12)
 
-- Runs on the owner's PC (Python 3.13.15, RTX 4060): all tests pass; Ollama `qwen2.5:7b` runs 100% on GPU
-  with `num_ctx` 8192.
-- Open issue: `qwen2.5:7b` answered "which programs can you start?" from memory (invented Paint/Word)
-  instead of calling `computer_list_apps`. PR #3 added grounding rules, an app enum and temperature 0.2,
-  plus `toolcheck`. Next step: run `toolcheck`; if fewer than 7/8 pass, compare other Ollama models and
-  pick the best, or add a deterministic intent fast-path before the model.
+- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 131 tests pass; Ollama `qwen2.5:7b` runs 100% on
+  GPU with `num_ctx` 8192.
+- Resolved: `qwen2.5:7b` used to answer "which programs can you start?" from memory (invented Paint/Word).
+  After PR #3 (grounding rules, app enum, temperature 0.2), `toolcheck` with `qwen2.5:7b` passes 8/8 and
+  that question now calls `computer_list_apps`. No model change needed. First request after load takes
+  ~40 s (model loading onto GPU); later ones 2–12 s.
 - Not configured yet: Claude API key (owner must set a spend limit in the Anthropic Console first),
   Home Assistant + Sonos (planned on the Raspberry Pi).
 
