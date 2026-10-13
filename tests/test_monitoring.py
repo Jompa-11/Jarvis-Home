@@ -170,6 +170,64 @@ async def test_unknown_priority_rejected():
         await n.notify(source="x", title="?", priority="critical")
 
 
+# ------------------------------------------------------- one-time codes ----
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Din säkerhetskod är 483920", "Din säkerhetskod är ••••"),
+        ("Kod: 483 920", "Kod: ••••"),
+        ("Kod 48-39-20 gäller i 5 min", "Kod •••• gäller i 5 min"),
+        ("PIN 1234.", "PIN ••••."),
+        ("Verifiering 12345678", "Verifiering ••••"),
+        ("Två koder: 1111 och 2222", "Två koder: •••• och ••••"),
+        ("Inget här, bara 123 och 7", "Inget här, bara 123 och 7"),  # under 4 digits stays
+        ("Kontonummer 1234567890", "Kontonummer 1234567890"),  # 10 digits: not a one-time code, not cut in half
+        ("Ring 070-123 45 67", "Ring 070-123 45 67"),  # a phone number is one longer run
+        ("Klockan 07:30", "Klockan 07:30"),
+    ],
+)
+def test_one_time_codes_are_masked(text, expected):
+    from jarvis.monitoring.notifier import mask_codes
+
+    assert mask_codes(text) == expected
+
+
+async def test_codes_never_reach_channels_ui_or_summary(tmp_path):
+    n, ui, popup, _ = make_notifier()
+    events = []
+    ui_real = UIChannel(lambda t, d: events.append(d))
+    n.channels.append(ui_real)
+    r = await n.notify(source="mail", title="Säkerhetskod från BankID: 483 920", priority="urgent", detail="Koden 112233 gäller i 5 minuter")
+    assert r.title == "Säkerhetskod från BankID: ••••" and r.detail == "Koden •••• gäller i 5 minuter"
+    for sent in (*ui.sent, *popup.sent):
+        assert "483" not in sent.title and "112233" not in (sent.detail or "")
+    assert "483" not in str(events) and "112233" not in str(events)
+    assert "483" not in str(n.list_recent()) and "112233" not in str(n.status())
+    low = await n.notify(source="mail", title="Kod 9876", priority="low")
+    assert n.summary[-1].title == "Kod ••••" and low.title == "Kod ••••"
+
+
+async def test_codes_are_masked_in_windows_notification(monkeypatch):
+    captured = {}
+
+    class Proc:
+        returncode = 0
+
+        async def communicate(self):
+            return b"", b""
+
+    async def fake_exec(*args, env=None, **kw):
+        captured["env"] = env
+        return Proc()
+
+    monkeypatch.setattr(channels_mod.sys, "platform", "win32")
+    monkeypatch.setattr(channels_mod.asyncio, "create_subprocess_exec", fake_exec)
+    n = Notifier(lambda: NotificationRules(), channels=[WindowsToastChannel()], clock=Clock(DAY))
+    await n.notify(source="mail", title="Verifieringskod 654321", priority="high", detail="Ange 654 321")
+    assert captured["env"]["JARVIS_TOAST_TITLE"] == "JARVIS · Verifieringskod ••••"
+    assert captured["env"]["JARVIS_TOAST_BODY"] == "Ange ••••"
+
+
 # ---------------------------------------------------------------- channels ----
 def test_urgent_is_clearly_marked():
     assert display_title(Notification("mail", "Larm från Securitas", "urgent")) == URGENT_PREFIX + "Larm från Securitas"

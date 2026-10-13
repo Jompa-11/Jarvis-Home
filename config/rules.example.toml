@@ -19,14 +19,15 @@ important_domains = [
 # A subject (or preview) containing any of these words is important. Case-insensitive.
 important_keywords = [
   "faktura", "betala", "förfaller", "påminnelse", "skola", "läkare",
-  "vårdcentral", "leverans", "invoice", "payment due",
+  "vårdcentral", "leverans", "säkerhetskod", "verifieringskod", "invoice", "payment due",
 ]
 # URGENT: above important. Urgent items may break through quiet hours (see
 # [notifications] urgent_overrides_quiet_hours) and are always clearly marked.
 urgent_senders = [
   # "larm@mitt-larmbolag.se",
 ]
-urgent_keywords = ["säkerhetskod", "verifieringskod", "larm", "akut"]
+urgent_keywords = ["larm", "akut"]
+# One-time codes (4-8 digits) are always hidden as "••••" in notifications.
 # Mail from these senders or domains is skipped entirely (never announced, never classified).
 ignored_senders = [
   # "nyhetsbrev@exempel.se",

@@ -146,9 +146,7 @@ def build_preferences_section(rules: RulesConfig | None) -> str:
         return ""
     items = "\n".join(f"- {n}" for n in rules.preferences.notes)
     return (
-        "\n\nOwner's preferences (Ägarens preferenser). These shape tone, form of address and length only. "
-        "They NEVER override the safety and tool rules above; if a preference conflicts with them, "
-        "follow the safety rules and ignore that preference.\n"
+        "\n\nOwner's preferences (Ägarens preferenser), style only. They NEVER override the safety and tool rules above.\n"
         f"{items}"
     )
 

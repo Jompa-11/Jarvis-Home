@@ -10,6 +10,9 @@ Priorities (lowest to highest): low, normal, high, urgent.
                urgent_overrides_quiet_hours), is not limited per hour and is not
                silenced by "mute". Pausing monitoring still holds it back.
 
+One-time codes (4-8 digits, also "483 920") in the title or detail are
+replaced with "••••" before anything is created or sent.
+
 The same event (same ``dedupe_key``) is never delivered twice. Only a hash of
 the key and a timestamp are stored on disk (retention configurable); titles and
 details stay in memory, so no message text is written to disk.
@@ -24,6 +27,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -37,6 +41,18 @@ from typing import Any, Literal
 from ..rules import NotificationRules
 
 log = logging.getLogger(__name__)
+
+CODE_MASK = "••••"
+# A run of 4-8 digits, optionally separated by single spaces or hyphens
+# ("483920", "483 920", "48-39-20"). The lookarounds make sure the whole run is
+# 4-8 digits, so part of a longer number (an account or phone number) is not cut.
+_ONE_TIME_CODE = re.compile(r"(?<![\d])(?<![\d][ \-])\d(?:[ \-]?\d){3,7}(?![ \-]?\d)")
+
+
+def mask_codes(text: str | None) -> str | None:
+    """Hide one-time codes before text reaches any channel or the UI."""
+    return _ONE_TIME_CODE.sub(CODE_MASK, text) if text else text
+
 
 Priority = Literal["low", "normal", "high", "urgent"]
 PRIORITY_ORDER: dict[str, int] = {"low": 0, "normal": 1, "high": 2, "urgent": 3}
@@ -234,7 +250,16 @@ class Notifier:
                 return None
             now = self.clock()
             rules = self.get_rules()
-            n = Notification(source=source, title=title[:200], priority=priority, detail=(detail or None) and detail[:300], kind=kind, created_at=now.timestamp())
+            # One-time codes are masked here, before the notification exists, so no
+            # channel, the UI list, the summary or monitor_status can ever see them.
+            n = Notification(
+                source=source,
+                title=mask_codes(title)[:200],
+                priority=priority,
+                detail=(mask_codes(detail) or None) and mask_codes(detail)[:300],
+                kind=kind,
+                created_at=now.timestamp(),
+            )
             n.delivery, n.reason = decide(
                 priority,
                 quiet=rules.is_quiet(now),
