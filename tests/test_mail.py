@@ -54,7 +54,7 @@ def core_with_mail(make_core, messages, ollama_script=None, *, signed_in=True, a
         (mail("1", "Butiken <nyhetsbrev@butik.se>", "REA!"), "skip"),
         (mail("2", "Reklam <a@reklam.example>", "Köp nu"), "skip"),
         (mail("3", "Securitas <larm@securitas.se>", "Status"), "urgent"),
-        (mail("4", "Granne <g@x.se>", "LARM i trapphuset"), "urgent"),
+        (mail("4", "Granne <g@x.se>", "LARM i trapphuset"), "high"),  # urgent word, unverified sender: at most high
         (mail("5", "Skatteverket <noreply@info.skatteverket.se>", "Deklaration"), "high"),  # subdomain
         (mail("6", "Telia <faktura@telia.se>", "Din faktura för oktober"), "high"),
         (mail("7", "Skolan Solbacken <info@solbacken.se>", "Utflykt"), "high"),  # display name
@@ -70,7 +70,77 @@ def test_rules_first(msg, priority):
 def test_ignored_wins_and_urgent_beats_important():
     rules = MailRules(important_keywords=["faktura"], urgent_keywords=["akut"], ignored_senders=["spam@x.se"])
     assert classify_by_rules(mail("1", "S <spam@x.se>", "AKUT faktura"), rules).priority == "skip"
-    assert classify_by_rules(mail("2", "A <a@y.se>", "Akut: faktura"), rules).priority == "urgent"
+    assert classify_by_rules(mail("2", "A <a@y.se>", "Akut: faktura"), rules).priority == "high"  # unverified sender
+
+
+# ---------------------------------------------------- spoofed display names ----
+SPOOF_RULES = MailRules(
+    important_senders=["Chefen <chef@jobb.se>", "Skolan Solbacken"],
+    important_domains=["skatteverket.se"],
+    important_keywords=["faktura"],
+    urgent_senders=["Securitas Larm <larm@securitas.se>", "Mamma"],
+    urgent_keywords=["larm", "akut"],
+)
+
+
+@pytest.mark.parametrize(
+    "msg, priority",
+    [
+        # The real address/domain matches: urgent is allowed.
+        (mail("1", "Securitas Larm <larm@securitas.se>", "Status"), "urgent"),
+        (mail("2", "Vem som helst <larm@securitas.se>", "Status"), "urgent"),  # the address counts, not the name
+        (mail("3", "Chefen <chef@jobb.se>", "AKUT: ring mig"), "urgent"),  # urgent word from a verified sender
+        (mail("4", "Skatteverket <noreply@skatteverket.se>", "Larm om deklaration"), "urgent"),  # verified domain + urgent word
+        # Only the display name matches: at most high.
+        (mail("5", "Securitas Larm <alarm@securitas-support.example>", "Status"), "high"),
+        (mail("6", "Mamma <mamma.svensson@gmail.com>", "Ring mig"), "high"),  # name-only urgent rule
+        (mail("7", "Chefen <chef@jobb-se.example>", "Möte"), "high"),
+        (mail("8", "Okänd <x@y.example>", "AKUT: ditt konto spärras"), "high"),  # urgent word, unknown sender
+    ],
+)
+def test_only_a_real_address_or_domain_can_give_urgent(msg, priority):
+    c = classify_by_rules(msg, SPOOF_RULES)
+    assert c.priority == priority, c.reason
+
+
+def test_named_address_rules_now_match():
+    # "Name <address>" in rules.toml used to never match; now the address part counts.
+    assert classify_by_rules(mail("1", "Chefen <chef@jobb.se>", "Lunch?"), SPOOF_RULES).priority == "high"
+    assert "visningsnamnet" in classify_by_rules(mail("2", "Chefen <boss@other.example>", "Lunch?"), SPOOF_RULES).reason
+
+
+@pytest.mark.parametrize(
+    "sender, label",
+    [
+        ("Skatteverket <noreply@skatteverket.se>", "Skatteverket (skatteverket.se)"),
+        ("Skatteverket <noreply@info.skatteverket.se>", "Skatteverket (info.skatteverket.se)"),  # subdomain is the real one
+        ("Skatteverket <kontakt@skatteverket-se.example>", "Skatteverket (okänd avsändare: skatteverket-se.example)"),
+        ("Skatteverket Kundtjänst <x@evil.example>", "Skatteverket Kundtjänst (okänd avsändare: evil.example)"),
+        ("Chefen <chef@jobb.se>", "Chefen (jobb.se)"),
+        ("Chefen <chef@gmail.com>", "Chefen (okänd avsändare: gmail.com)"),
+        ("Securitas Larm <larm@securitas.se>", "Securitas Larm (securitas.se)"),
+        ("Securitas Larm <noreply@securitas.example>", "Securitas Larm (okänd avsändare: securitas.example)"),
+        ("Anna <anna@example.se>", "Anna (example.se)"),  # no rule imitated: just the domain
+        ("Skolan Solbacken <info@solbacken.se>", "Skolan Solbacken (solbacken.se)"),  # name-only rule: nothing to verify
+    ],
+)
+def test_sender_label_always_shows_the_real_domain(sender, label):
+    from jarvis.mail.classify import sender_label
+
+    assert sender_label(mail("x", sender), SPOOF_RULES) == label
+
+
+async def test_spoofed_name_in_a_real_notification(make_core):
+    rules = RulesConfig(mail=SPOOF_RULES)
+    msgs = [
+        mail("s1", "Securitas Larm <alarm@securitas-support.example>", "Larm utlöst hemma"),
+        mail("s2", "Securitas Larm <larm@securitas.se>", "Larm utlöst hemma"),
+    ]
+    core = make_core({"ollama": ScriptedProvider("ollama", "local")}, rules=rules, mail_provider=FakeMailProvider(msgs))
+    await core.mail.poll()
+    fake, real = list(core.monitor.notifier.recent)[-2:]
+    assert fake.priority == "high" and fake.title == "Viktigt mejl från Securitas Larm (okänd avsändare: securitas-support.example)"
+    assert real.priority == "urgent" and real.title == "Viktigt mejl från Securitas Larm (securitas.se)"
 
 
 # ----------------------------------------------------------------- (b) model ----
@@ -118,14 +188,14 @@ async def test_rule_matches_do_not_call_any_model(make_core):
     await core.mail.poll()
     assert anthropic.requests == [] and ollama.requests == []
     n = core.monitor.notifier.recent[-1]
-    assert n.priority == "high" and n.title == "Viktigt mejl från Telia" and n.detail == "Faktura oktober"
+    assert n.priority == "high" and n.title == "Viktigt mejl från Telia (telia.se)" and n.detail == "Faktura oktober"
 
 
 async def test_model_unavailable_means_normal_not_high(make_core):
     core, *_ = core_with_mail(make_core, [mail("m1", "Okänd <o@x.se>", "Hej")], [RuntimeError("Ollama down")])
     await core.mail.poll()
     n = core.monitor.notifier.recent[-1]
-    assert n.priority == "normal" and n.title == "Mejl från Okänd"
+    assert n.priority == "normal" and n.title == "Mejl från Okänd (x.se)"
 
 
 # ---------------------------------------------------------- prompt injection ----
@@ -162,7 +232,7 @@ async def test_prompt_injection_never_leads_to_a_tool_call(make_core, monkeypatc
     assert ollama.requests[0]["tools"] == [] and anthropic.requests == []
     n = core.monitor.notifier.recent[-1]
     # The wording is a fixed template; the mail can only fill sender and one line, and never reach "urgent".
-    assert n.title in ("Viktigt mejl från Eve", "Mejl från Eve") and n.priority != "urgent"
+    assert n.title in ("Viktigt mejl från Eve (evil.example)", "Mejl från Eve (evil.example)") and n.priority != "urgent"
     assert core.orchestrator.conversation.messages == []  # nothing entered the chat
 
 
@@ -181,7 +251,7 @@ async def test_injection_guard_skips_model_caps_priority_and_hides_text(make_cor
     await core.mail.poll()
     assert ollama.requests == [] and anthropic.requests == []  # not even shown to the model
     n = core.monitor.notifier.recent[-1]
-    assert n.priority == "normal" and n.title == "Mejl från Eve"
+    assert n.priority == "normal" and n.title == "Mejl från Eve (evil.example)"
     assert n.detail == "Mejlet verkar innehålla instruktioner till JARVIS. De ignorerades."
     assert subject not in str(n.public()) or subject == "Hej"
     listed = (await core.registry.get("mail_list_recent").handler({}, None)).data["messages"][0]
@@ -214,7 +284,7 @@ async def test_each_mail_is_notified_once_and_ignored_mail_never(make_core):
     assert await core.mail.poll() == 3
     assert await core.mail.poll() == 0  # already handled: no new notifications, no new model calls
     titles = [n.title for n in core.monitor.notifier.recent]
-    assert titles == ["Viktigt mejl från Telia", "Mejl från Anna"] and len(ollama.requests) == 1
+    assert titles == ["Viktigt mejl från Telia (telia.se)", "Mejl från Anna (example.se)"] and len(ollama.requests) == 1
     assert len(provider.calls) == 2
 
 
@@ -222,7 +292,7 @@ async def test_spoken_style_template_and_masked_codes(make_core):
     core, *_ = core_with_mail(make_core, [mail("k", "BankID <noreply@bank.se>", "Din säkerhetskod", snippet="Kod 483 920")])
     await core.mail.poll()
     n = core.monitor.notifier.recent[-1]
-    assert n.title == "Viktigt mejl från BankID" and "483" not in str(n.public())
+    assert n.title == "Viktigt mejl från BankID (bank.se)" and "483" not in str(n.public())
 
 
 async def test_expired_sign_in_is_reported_once(make_core):
@@ -266,9 +336,9 @@ async def test_mail_list_recent_is_read_only_personal(make_core):
     assert spec.risk.name == "READ" and spec.output_sensitivity == "personal"
     await core.mail.poll()
     data = (await spec.handler({"important_only": True}, None)).data
-    assert [m["from"] for m in data["messages"]] == ["Telia"]
+    assert [m["from"] for m in data["messages"]] == ["Telia (telia.se)"]
     data = (await spec.handler({}, None)).data
-    assert [m["from"] for m in data["messages"]] == ["Anna", "Telia"]  # newest first
+    assert [m["from"] for m in data["messages"]] == ["Anna (example.se)", "Telia (telia.se)"]  # newest first
     core2, *_ = core_with_mail(make_core, [], signed_in=False)
     r = await core2.registry.get("mail_list_recent").handler({}, None)
     assert r.ok is False and "mail-login" in r.error

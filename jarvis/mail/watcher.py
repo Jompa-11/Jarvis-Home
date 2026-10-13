@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Any
 
 from ..config import MailConfig
 from ..providers.base import AIProvider
-from ..rules import RulesConfig
+from ..rules import MailRules, RulesConfig
 from .base import MailAuthError, MailMessage, MailProvider
-from .classify import Classification, classify_by_rules, classify_with_model
+from .classify import Classification, classify_by_rules, classify_with_model, sender_label
 
 if TYPE_CHECKING:
     from ..core.tools import ToolRegistry
@@ -26,9 +26,13 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def notification_text(msg: MailMessage, c: Classification) -> tuple[str, str | None]:
-    """Fixed templates. Mail content only fills the sender and one line, never the wording."""
-    who = msg.sender_display
+def notification_text(msg: MailMessage, c: Classification, rules: MailRules) -> tuple[str, str | None]:
+    """Fixed templates. Mail content only fills the sender and one line, never the wording.
+
+    The sender always shows the REAL domain ("Skatteverket (skatteverket.se)"), and a
+    display name that imitates a known sender is flagged ("(okänd avsändare: exempel.com)").
+    """
+    who = sender_label(msg, rules)
     title = f"Viktigt mejl från {who}" if c.priority in ("high", "urgent") else f"Mejl från {who}"
     if c.by == "guard":
         return title, c.summary  # do not repeat the suspicious subject either
@@ -98,19 +102,20 @@ class MailWatcher:
             key = f"gmail:{msg.id}"
             if self.monitor.notifier.seen.seen(key):
                 continue
-            c = classify_by_rules(msg, self.get_rules().mail)
+            mail_rules = self.get_rules().mail
+            c = classify_by_rules(msg, mail_rules)
             if c is None:
                 c = await classify_with_model(msg, self.get_local_model(), timeout_s=self.cfg.classify_timeout_s)
             handled += 1
             if c.priority == "skip":
                 self.monitor.notifier.seen.add(key)
                 continue
-            title, detail = notification_text(msg, c)
+            title, detail = notification_text(msg, c, mail_rules)
             await self.monitor.notifier.notify(source="mail", title=title, detail=detail, priority=c.priority, kind="mail", dedupe_key=key)  # type: ignore[arg-type]
             self.recent.append(
                 {
                     "received": time.strftime("%Y-%m-%d %H:%M", time.localtime(msg.received_at)),
-                    "from": msg.sender_display,
+                    "from": sender_label(msg, mail_rules),
                     # mail_list_recent output reaches the chat model, which has tools: a
                     # suspicious subject is not passed on.
                     "subject": "(dolt: möjligt manipulationsförsök)" if c.by == "guard" else msg.subject,

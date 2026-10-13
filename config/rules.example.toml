@@ -5,7 +5,12 @@
 
 # ------------------------------------------------------------- E-mail ----
 [mail]
-# Mail from these senders (full address or display name) is always important.
+# Write senders as an address ("chef@jobb.se"), "Name <address>" or a domain ("bank.se").
+# A display name alone ("Skolan Solbacken") also works, but anyone can put any name on
+# an e-mail: a name-only match is never urgent, and notifications always show the real
+# domain, e.g. "Skatteverket (skatteverket.se)" or "Skatteverket (okänd avsändare: exempel.com)".
+#
+# Mail from these senders is always important.
 important_senders = [
   # "chef@exempel.se",
   # "Skatteverket",
@@ -23,6 +28,8 @@ important_keywords = [
 ]
 # URGENT: above important. Urgent items may break through quiet hours (see
 # [notifications] urgent_overrides_quiet_hours) and are always clearly marked.
+# Only a matching real ADDRESS or DOMAIN gives urgent. Urgent keywords give urgent only
+# from a sender whose address/domain is in your rules; from anyone else they give important.
 urgent_senders = [
   # "larm@mitt-larmbolag.se",
 ]
