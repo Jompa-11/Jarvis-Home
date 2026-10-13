@@ -2,6 +2,8 @@
 
     python -m jarvis toolcheck                      # the configured Ollama model
     python -m jarvis toolcheck --model llama3.1:8b  # compare another local model
+    python -m jarvis toolcheck --spoken             # as spoken requests (replies read aloud);
+                                                    # also checks the reply language
 
 Every prompt runs through the real orchestrator with dry-run forced on for
 both the computer and the smart home, so nothing is opened or changed.
@@ -16,12 +18,14 @@ from dataclasses import dataclass
 from .app_core import JarvisCore
 from .config import JarvisConfig, ModelRoute
 from .providers.base import AIProvider
+from .voice.speech_text import clean_for_speech, guess_language
 
 
 @dataclass(frozen=True)
 class Case:
     prompt: str
     expected: frozenset[str]  # tools that must be called; empty = no tool expected
+    language: str = "sv"  # language the reply should be in (checked for spoken requests)
 
 
 CASES: list[Case] = [
@@ -30,7 +34,7 @@ CASES: list[Case] = [
     Case("Starta miniräknaren", frozenset({"computer_open_app"})),
     Case("Vad är klockan?", frozenset({"system_get_time"})),
     Case("Visa systemstatus", frozenset({"system_get_status"})),
-    Case("Which speakers do you have?", frozenset({"sonos_list_speakers"})),
+    Case("Which speakers do you have?", frozenset({"sonos_list_speakers"}), "en"),
     Case("Pausa musiken i köket", frozenset({"sonos_playback"})),
     Case("Berätta ett kort skämt", frozenset()),
 ]
@@ -61,6 +65,7 @@ async def run_toolcheck(
     model: str | None = None,
     providers: dict[str, AIProvider] | None = None,
     cases: list[Case] | None = None,
+    spoken: bool = False,
 ) -> list[CaseResult]:
     core = JarvisCore(_isolated_config(cfg, model), providers=providers, persist=False)
     # Safety: simulate every action; never wait long for a confirmation.
@@ -75,11 +80,14 @@ async def run_toolcheck(
             core.orchestrator.reset_conversation()
             core.history.clear()
             started = time.monotonic()
-            res = await core.orchestrator.handle(case.prompt)
+            res = await core.orchestrator.handle(case.prompt, speech=spoken)
             called = [e["tool"] for e in reversed(core.history.list())]
             passed = bool(res.get("ok")) and (
                 case.expected <= set(called) if case.expected else not called
             )
+            error = None if res.get("ok") else res.get("error")
+            if spoken and passed and guess_language(clean_for_speech(res.get("text") or "")) != case.language:
+                passed, error = False, f"reply not in {case.language}: {res.get('text')}"
             results.append(
                 CaseResult(
                     case=case,
@@ -87,7 +95,7 @@ async def run_toolcheck(
                     passed=passed,
                     seconds=round(time.monotonic() - started, 1),
                     reply=(res.get("text") or "").replace("\n", " "),
-                    error=None if res.get("ok") else res.get("error"),
+                    error=error,
                 )
             )
     finally:
@@ -95,8 +103,9 @@ async def run_toolcheck(
     return results
 
 
-def format_report(results: list[CaseResult], model: str) -> str:
-    lines = [f"Tool-use check — model: {model} (dry-run, local only)", ""]
+def format_report(results: list[CaseResult], model: str, spoken: bool = False) -> str:
+    mode = ", spoken requests" if spoken else ""
+    lines = [f"Tool-use check — model: {model} (dry-run, local only{mode})", ""]
     for r in results:
         mark = "PASS" if r.passed else "FAIL"
         expected = ", ".join(sorted(r.case.expected)) or "(no tool)"

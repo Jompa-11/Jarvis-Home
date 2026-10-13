@@ -5,6 +5,7 @@
     python -m jarvis check        validate configuration and show what is configured
     python -m jarvis diagnose     inspect this machine (hardware, devices, services)
     python -m jarvis toolcheck    check that the local AI model uses JARVIS's tools (dry-run)
+    python -m jarvis voice-models show which voice models are present (--download fetches missing ones)
 """
 
 from __future__ import annotations
@@ -51,7 +52,12 @@ def _check(cfg: JarvisConfig) -> int:
     print(f"  Home Assistant : {ha['state']} — {ha['detail']}")
     so = snap["integrations"]["sonos"]
     print(f"  Sonos          : {so['state']} — {so['detail']}")
-    print(f"  Microphone     : {snap['voice']['mic_state']} (master switch {snap['voice']['master_switch']})")
+    v = snap["voice"]
+    print(f"  Microphone     : {v['mic_state']} (master switch {v['master_switch']}, push-to-talk)")
+    for stage in ("capture", "stt", "tts"):
+        info = v[stage]
+        extra = {k: val for k, val in info.items() if k not in ("state", "cloud")}
+        print(f"    - {stage:<8}: {info['state']}  {extra if extra else ''}")
     print(f"  Computer control: dry-run={'on' if snap['computer']['dry_run'] else 'off'}, platform supported={snap['computer']['platform_supported']}")
     return 0
 
@@ -96,7 +102,9 @@ def _serve(cfg: JarvisConfig, desktop: bool, open_browser: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS home assistant")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck"])
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck", "voice-models"])
+    parser.add_argument("--download", action="store_true", help="voice-models: download missing models into data/models")
+    parser.add_argument("--spoken", action="store_true", help="toolcheck: send the prompts as spoken requests")
     parser.add_argument("--config", help="Path to jarvis.toml")
     parser.add_argument("--desktop", action="store_true", help="Open in a native window (pywebview)")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
@@ -119,12 +127,25 @@ def main(argv: list[str] | None = None) -> int:
 
         model = args.model or cfg.ollama.model
         print(f"Running tool-use check against Ollama model '{model}' (dry-run; nothing is changed)...")
-        results = asyncio.run(run_toolcheck(cfg, model=model))
+        results = asyncio.run(run_toolcheck(cfg, model=model, spoken=args.spoken))
         if not results:
             print("No checks ran.")
             return 1
-        print(format_report(results, model))
+        print(format_report(results, model, args.spoken))
         return 0 if all(r.passed for r in results) else 1
+    if args.command == "voice-models":
+        from .voice import models
+
+        voices = [v for v in (cfg.voice.tts_voice_sv, cfg.voice.tts_voice_en) if v]
+        if args.download:
+            models.download(cfg.models_dir, cfg.voice.stt_model, voices)
+        rows = models.status(cfg.models_dir, cfg.voice.stt_model, voices)
+        for r in rows:
+            print(f"  {r['kind']:<8} {r['name']:<22} {'present' if r['present'] else 'MISSING'}  {r['path']}")
+        if not all(r["present"] for r in rows):
+            print("Missing models can be fetched with: python -m jarvis voice-models --download")
+            return 1
+        return 0
     if args.command == "diagnose":
         from . import diagnostics
 

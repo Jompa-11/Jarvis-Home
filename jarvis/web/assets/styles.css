@@ -250,6 +250,21 @@ button, input, select { font: inherit; color: inherit; }
 }
 .mic-btn svg { width: 18px; height: 18px; fill: none; stroke: var(--text-faint); stroke-width: 1.6; stroke-linecap: round; }
 .mic-btn .mic-slash { stroke: var(--text-faint); }
+/* Push-to-talk: ready, listening (mic open), processing (mic closed). */
+.mic-btn:not(:disabled) { cursor: pointer; touch-action: none; user-select: none; }
+.mic-btn:not(:disabled) .mic-slash { display: none; }
+.mic-btn:not(:disabled) svg { stroke: var(--text-dim); }
+.mic-btn:not(:disabled):hover { border-color: var(--line-strong); }
+.mic-btn.listening { border-color: var(--err); background: var(--err-soft); box-shadow: 0 0 0 4px rgba(255, 93, 122, 0.12), 0 0 18px rgba(255, 93, 122, 0.35); animation: mic-pulse 1.2s ease-in-out infinite; }
+.mic-btn.listening svg { stroke: var(--err); }
+.mic-btn.processing { border-color: var(--warn); background: var(--warn-soft); }
+.mic-btn.processing svg { stroke: var(--warn); }
+@keyframes mic-pulse { 50% { box-shadow: 0 0 0 7px rgba(255, 93, 122, 0.06), 0 0 24px rgba(255, 93, 122, 0.45); } }
+.composer-hint.listening { color: var(--err); }
+.composer-hint.processing { color: var(--warn); }
+@media (prefers-reduced-motion: reduce) { .mic-btn.listening { animation: none; } }
+/* Voice mode: one-line reply preview, click to expand. */
+.msg-body.brief { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .send-btn, .stop-btn {
   flex: 0 0 auto; border: 0; cursor: pointer; border-radius: 999px; padding: 10px 20px;
   font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;

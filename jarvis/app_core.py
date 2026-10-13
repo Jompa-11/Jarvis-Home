@@ -29,6 +29,7 @@ from .providers.ollama_provider import OllamaProvider
 from .providers.router import ProviderRouter
 from .providers.usage import UsageTracker
 from .system_tools import register_system_tools
+from .voice.engines import build_voice_controller
 from .voice.interfaces import VoiceController
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class JarvisCore:
         ha_transport: httpx.AsyncBaseTransport | None = None,
         persist: bool = True,
         sonos_verify_delay_s: float = 0.5,
+        voice: VoiceController | None = None,
     ) -> None:
         self.cfg = cfg
         self.started_at = time.time()
@@ -64,8 +66,9 @@ class JarvisCore:
         self.ha = HomeAssistantClient(cfg.homeassistant, transport=ha_transport)
         self.sonos = SonosService(self.ha, verify_delay_s=sonos_verify_delay_s)
         self.windows = WindowsControl(cfg.computer)
-        self.voice = VoiceController()
+        self.voice = voice if voice is not None else build_voice_controller(cfg.voice, cfg.models_dir)
         self.voice.set_enabled(self.settings.current.microphone_enabled)
+        self.voice.on_change = lambda: self.bus.publish("voice.state", self.voice.status())
 
         self.registry = ToolRegistry()
         register_system_tools(self.registry, self)
@@ -85,6 +88,7 @@ class JarvisCore:
         self.diagnostics: dict[str, Any] | None = None
         self._bg: asyncio.Task | None = None
         self._state_watch: asyncio.Task | None = None
+        self._speech_tasks: set[asyncio.Task] = set()
 
     def _privacy(self) -> PrivacyConfig:
         st = self.settings.current
@@ -94,11 +98,13 @@ class JarvisCore:
     async def start(self) -> None:
         await self.refresh_integrations()
         self._bg = asyncio.create_task(self._health_loop(), name="jarvis-health")
-        self._state_watch = asyncio.create_task(self._push_state_after_actions(), name="jarvis-state-watch")
+        # Subscribe before the task first runs, so no event published in between is missed.
+        self._state_watch = asyncio.create_task(self._push_state_after_actions(self.bus.subscribe()), name="jarvis-state-watch")
         log.info("JARVIS core started")
 
     async def stop(self) -> None:
         self.orchestrator.cancel()
+        await self.voice.shutdown()
         for task in (self._bg, self._state_watch):
             if task:
                 task.cancel()
@@ -122,15 +128,19 @@ class JarvisCore:
             except Exception:
                 log.exception("Health refresh failed")
 
-    async def _push_state_after_actions(self) -> None:
+    async def _push_state_after_actions(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         # After a tool finishes, publish a fresh snapshot so panels such as the
         # audio zones show the device state the action produced.
-        queue = self.bus.subscribe()
+        # Also reads replies aloud with the local voice when that is switched on.
         try:
             while True:
                 ev = await queue.get()
                 if ev["type"] == "tool.updated" and ev["data"].get("finished_at"):
                     self.bus.publish("state", await self.snapshot())
+                elif ev["type"] == "turn.completed" and ev["data"].get("speech") and self.voice.tts:
+                    task = asyncio.create_task(self.voice.speak(ev["data"].get("text", "")), name="jarvis-speak")
+                    self._speech_tasks.add(task)  # keep a reference until it finishes
+                    task.add_done_callback(self._speech_tasks.discard)
         finally:
             self.bus.unsubscribe(queue)
 
@@ -145,6 +155,16 @@ class JarvisCore:
         for name in self.router.providers:
             await self.router.health(name, force=True)
         self.bus.publish("state", await self.snapshot())
+
+    # -- requests --------------------------------------------------------------
+    def reply_is_spoken(self, voice_input: bool) -> bool:
+        """Whether a reply will be read aloud: always for a spoken request, in
+        voice mode, or for typed requests when "Read replies aloud" is on."""
+        st = self.settings.current
+        return voice_input or st.voice_mode or st.speak_replies
+
+    async def chat(self, text: str, *, voice_input: bool = False) -> dict[str, Any]:
+        return await self.orchestrator.handle(text, speech=self.reply_is_spoken(voice_input))
 
     # -- settings ------------------------------------------------------------
     async def update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:

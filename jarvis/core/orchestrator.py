@@ -27,6 +27,18 @@ log = logging.getLogger(__name__)
 
 MAX_INPUT_CHARS = 4000
 
+# Added to the per-turn context when the reply will be read aloud, but only
+# after the model's first round. Measured with `toolcheck --spoken`: any such
+# instruction present while a small local model (qwen2.5:7b) picks its tools
+# made it skip tool calls and switch language, so the first round is identical
+# to a typed request and the hint shapes only the answer written after tool
+# results. Replies without tools are cleaned for speech before they are read.
+SPOKEN_REPLY_HINT = (
+    "reply_mode: spoken. The reply will be read aloud: answer in the language of the user's "
+    "message, in one to three short, natural sentences of plain text, with no lists, "
+    "markdown, emojis, links or code."
+)
+
 
 def build_system_prompt(cfg: JarvisConfig) -> str:
     # Kept constant for the life of the process: per-turn facts (time, profile,
@@ -100,8 +112,11 @@ class Orchestrator:
         return self._lock.locked()
 
     # -- public API --------------------------------------------------------
-    async def handle(self, text: str) -> dict[str, Any]:
-        text = (text or "").strip()
+    async def handle(self, text: str, *, speech: bool = False) -> dict[str, Any]:
+        """Run one turn. ``speech`` means the reply will be read aloud."""
+        # Replace unpaired surrogates (broken client encoding) so they cannot
+        # break the request to the model later.
+        text = (text or "").encode("utf-8", "replace").decode("utf-8").strip()
         if not text:
             return {"ok": False, "error": "Empty request."}
         if len(text) > MAX_INPUT_CHARS:
@@ -114,7 +129,7 @@ class Orchestrator:
             self._active_task = asyncio.current_task()
             self._cancel_requested = False
             try:
-                return await self._run_turn(request_id, text)
+                return await self._run_turn(request_id, text, speech)
             except asyncio.CancelledError:
                 self._close_dangling_tool_calls("Cancelled by the user.")
                 self._set_status("idle")
@@ -151,7 +166,7 @@ class Orchestrator:
                         )
                 break
 
-    async def _run_turn(self, request_id: str, text: str) -> dict[str, Any]:
+    async def _run_turn(self, request_id: str, text: str, speech: bool = False) -> dict[str, Any]:
         started = time.monotonic()
         st = self.settings.current
         profile = self.cfg.profile(st.active_profile) or self.cfg.profile(self.cfg.default_profile)
@@ -170,7 +185,8 @@ class Orchestrator:
             ]
         )
         self.conversation.trim()
-        self.conversation.append(ChatMessage(role="user", content=text, context=context))
+        user_msg = ChatMessage(role="user", content=text, context=context)
+        self.conversation.append(user_msg)
         if self.cfg.logging.log_conversation_content:
             log.info("[%s] user: %s", request_id, text)
         else:
@@ -190,6 +206,9 @@ class Orchestrator:
         try:
             for _round in range(self.cfg.ai.max_tool_rounds):
                 self._raise_if_cancelled()
+                if speech and _round == 1:
+                    # Tools have run; now shape the answer for speech (see SPOKEN_REPLY_HINT).
+                    user_msg.context += "\n" + SPOKEN_REPLY_HINT
                 resp, info = await self.router.complete(
                     category=category,
                     system=self.system_prompt,
@@ -254,6 +273,7 @@ class Orchestrator:
             "executions": executions,
             "estimated_cost_usd": round(total_cost, 6),
             "duration_s": round(time.monotonic() - started, 2),
+            "speech": speech,
         }
         self.last_error = None
         self._set_status("idle")

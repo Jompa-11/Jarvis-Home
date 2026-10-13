@@ -9,8 +9,12 @@
   Also install pywebview for the native desktop window.
 .PARAMETER Dev
   Also install test dependencies (pytest).
+.PARAMETER Voice
+  Also install push-to-talk voice packages (about 1.5 GB, mostly NVIDIA CUDA
+  libraries for Whisper on the GPU). Models are downloaded separately with
+  python -m jarvis voice-models --download
 #>
-param([switch]$Desktop, [switch]$Dev)
+param([switch]$Desktop, [switch]$Dev, [switch]$Voice)
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
@@ -47,6 +51,12 @@ $req = if ($Dev) { 'requirements-dev.lock' } else { 'requirements.lock' }
 Write-Host "Installing pinned dependencies from $req ..."
 & $venvPy -m pip install --require-hashes -r $req --quiet
 if ($LASTEXITCODE -ne 0) { Write-Host 'Dependency installation failed.' -ForegroundColor Red; exit 1 }
+if ($Voice) {
+    Write-Host 'Installing pinned voice dependencies from requirements-voice.lock (about 1.5 GB) ...'
+    & $venvPy -m pip install --require-hashes -r requirements-voice.lock --quiet
+    if ($LASTEXITCODE -ne 0) { Write-Host 'Voice dependency installation failed.' -ForegroundColor Red; exit 1 }
+    Write-Host 'Voice packages installed. Download models with:  .\.venv\Scripts\python.exe -m jarvis voice-models --download'
+}
 if ($Desktop) {
     Write-Host 'Installing pywebview for the desktop window...'
     & $venvPy -m pip install 'pywebview>=5.0' --quiet

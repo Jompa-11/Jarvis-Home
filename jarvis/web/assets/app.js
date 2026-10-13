@@ -64,10 +64,14 @@
       state = "offline"; label = "Offline"; sub = "No connection to the JARVIS core"; cls = "off";
     } else if (s.pending_confirmations && s.pending_confirmations.length) {
       state = "awaiting"; label = "Awaiting authorization"; sub = "Review the request on the right"; cls = "warn";
+    } else if (s.voice.mic_state === "capturing") {
+      state = "listening"; label = "Listening"; sub = "Release the microphone button to send";
+    } else if (s.voice.mic_state === "processing") {
+      state = "processing"; label = "Thinking"; sub = "Recognising speech locally";
     } else if (s.ai.status === "processing") {
-      state = "processing"; label = "Processing"; sub = "Reasoning and executing tools";
-    } else if (ui.speaking) {
-      state = "speaking"; label = "Speaking"; sub = "Reading reply aloud";
+      state = "processing"; label = "Thinking"; sub = "Reasoning and executing tools";
+    } else if (s.voice.speaking || ui.speaking) {
+      state = "speaking"; label = "Speaking"; sub = s.voice.speaking ? "Press the microphone to interrupt" : "Reading reply aloud";
     } else if (s.ai.status === "error") {
       state = "error"; label = "Fault"; sub = s.ai.last_error || "The last request failed"; cls = "err";
     } else {
@@ -94,6 +98,104 @@
     li.appendChild(mid);
     li.appendChild(el("span", "status-value " + (valueCls || ""), value));
     return li;
+  }
+
+  // ---------- microphone (push-to-talk) ----------
+  // [dot, value, value class] per backend mic_state.
+  const MIC_STATUS = {
+    not_implemented: ["na", "Off", ""], disabled: ["off", "Off", ""], idle: ["ok", "Ready", "ok"],
+    capturing: ["err", "Listening", "err"], processing: ["warn", "Processing", "warn"], error: ["err", "Error", "err"],
+  };
+  const MIC_HINT = {
+    disabled: "Microphone off · turn on the master switch in Settings",
+    idle: "Hold the microphone button (or Space on it) to talk",
+    capturing: "Listening… release to send",
+    processing: "Processing speech locally…",
+  };
+
+  function micDetail(v) {
+    if (v.mic_state === "not_implemented") return (v.stt && v.stt.detail) || (v.capture && v.capture.detail) || "No voice engine installed";
+    if (v.mic_state === "disabled") return "Master switch off";
+    const stt = v.stt || {};
+    return [v.capture && v.capture.device, stt.model && `${stt.model} · ${stt.device}`].filter(Boolean).join(" · ");
+  }
+
+  function renderMic(v) {
+    const btn = $("btn-mic");
+    const st = v.mic_state;
+    const usable = st === "idle" || st === "capturing" || st === "processing";
+    // While JARVIS is speaking the button always works, to interrupt it.
+    btn.disabled = !usable && !v.speaking;
+    btn.classList.toggle("listening", st === "capturing");
+    btn.classList.toggle("processing", st === "processing");
+    const label = st === "capturing" ? "Listening, release to send" : st === "processing" ? "Processing speech"
+      : v.speaking ? (usable ? "Interrupt and talk" : "Stop speaking") : usable ? "Hold to talk" : "Microphone unavailable";
+    btn.setAttribute("aria-label", label);
+    btn.title = st === "not_implemented" ? micDetail(v) : label;
+    const hint = $("mic-hint");
+    hint.className = "composer-hint" + (st === "capturing" ? " listening" : st === "processing" ? " processing" : "");
+    hint.textContent = st === "not_implemented" ? `Microphone off · ${micDetail(v)}` : (MIC_HINT[st] || `Microphone ${st}`);
+    if (v.last_error && st !== "capturing") hint.textContent += ` · ${v.last_error}`;
+  }
+
+  const ptt = { held: false, starting: null };
+
+  async function pttStart() {
+    if (ptt.held || $("btn-mic").disabled) return;
+    const v = ui.state && ui.state.voice;
+    if (v && v.speaking) {
+      // Interrupt the reply immediately; the backend also does this on start.
+      api("/api/voice/interrupt", { method: "POST" }).catch((e) => toast(e.message, "err"));
+      if (v.mic_state !== "idle") return;
+    }
+    if (window.speechSynthesis && ui.speaking) window.speechSynthesis.cancel();
+    if (ui.busy) return;
+    ptt.held = true;
+    ptt.starting = api("/api/voice/start", { method: "POST", body: "{}" });
+    try { await ptt.starting; } catch (e) { ptt.held = false; toast(e.message, "err"); }
+    finally { ptt.starting = null; }
+  }
+
+  async function pttStop() {
+    if (!ptt.held) return;
+    ptt.held = false;
+    if (ptt.starting) { try { await ptt.starting; } catch (_) { return; } }
+    try {
+      const r = await api("/api/voice/stop", { method: "POST" });
+      if (r.text) send(r.text, { voice: true });
+      else toast("No speech was recognised. Hold the button while you talk.");
+    } catch (e) {
+      toast(e.message, "err");
+    }
+  }
+
+  const micBtn = $("btn-mic");
+  micBtn.addEventListener("pointerdown", (e) => { if (e.button === 0) { micBtn.setPointerCapture(e.pointerId); pttStart(); } });
+  micBtn.addEventListener("pointerup", pttStop);
+  micBtn.addEventListener("pointercancel", pttStop);
+  micBtn.addEventListener("lostpointercapture", pttStop);
+  micBtn.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); pttStart(); } });
+  micBtn.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); pttStop(); } });
+  micBtn.addEventListener("blur", pttStop);
+  micBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+  window.addEventListener("blur", pttStop);
+
+  async function loadMicDevices() {
+    const sel = $("set-mic-device");
+    try {
+      const r = await api("/api/voice/devices");
+      const opts = [el("option", null, "System default")];
+      opts[0].value = "";
+      for (const d of r.devices) { const o = el("option", null, d.name); o.value = d.name; opts.push(o); }
+      if (r.selected && !r.devices.some((d) => d.name === r.selected)) {
+        const o = el("option", null, `${r.selected} (not found)`); o.value = r.selected; opts.push(o);
+      }
+      sel.replaceChildren(...opts);
+      sel.value = r.selected || "";
+      sel.disabled = r.devices.length === 0;
+    } catch (e) {
+      sel.disabled = true;
+    }
   }
 
   function renderSystems(s) {
@@ -130,8 +232,8 @@
     list.appendChild(statusRow(sd, "Sonos", so.detail, sv, sc));
 
     const v = s.voice;
-    const micDetail = v.mic_state === "not_implemented" ? "No voice engine installed (Phase 2)" : `Master switch ${v.master_switch}`;
-    list.appendChild(statusRow(v.mic_state === "not_implemented" ? "na" : "off", "Microphone", micDetail, v.mic_state === "not_implemented" ? "Off" : v.mic_state.replace("_", " ")));
+    const [md, mv, mc] = MIC_STATUS[v.mic_state] || ["warn", v.mic_state, "warn"];
+    list.appendChild(statusRow(md, "Microphone", micDetail(v), mv, mc));
     list.appendChild(statusRow("na", "Camera", "No camera module installed (Phase 3)", "Off"));
 
     const c = s.computer;
@@ -185,10 +287,7 @@
     $("version").textContent = `· v${s.core.version}`;
     const ap = s.active_profile;
     $("profile-chip").textContent = !ap ? "" : ap.name.toLowerCase() === ap.role ? ap.name : `${ap.name} · ${ap.role}`;
-    const mic = s.voice;
-    $("mic-hint").textContent = mic.mic_state === "not_implemented"
-      ? "Microphone off · voice input arrives in Phase 2"
-      : `Microphone ${mic.mic_state.replace("_", " ")}`;
+    renderMic(s.voice);
   }
 
   function renderSettings(s) {
@@ -205,6 +304,7 @@
     $("set-mic").checked = st.microphone_enabled;
     $("set-camera").checked = st.camera_enabled;
     $("set-speak").checked = st.speak_replies;
+    $("set-voice-mode").checked = st.voice_mode;
   }
 
   function renderConfirmations(s) {
@@ -279,8 +379,17 @@
     removeThinking();
     hideEmpty();
     const m = el("div", "msg msg-assistant");
-    m.appendChild(el("div", "msg-body", result.text));
+    const body = el("div", "msg-body", result.text);
+    // Voice mode: a one-line preview while the whole reply is read aloud; click to expand.
+    const brief = result.speech && ui.state && ui.state.settings.voice_mode;
+    if (brief) {
+      body.classList.add("brief");
+      body.title = "Click to show the full reply";
+      body.addEventListener("click", () => body.classList.toggle("brief"));
+    }
+    m.appendChild(body);
     const meta = el("div", "msg-meta");
+    if (result.speech) meta.appendChild(el("span", "badge local", "Spoken"));
     if (result.is_fallback) meta.appendChild(el("span", "badge fallback", result.provider === "dev" ? "Dev fallback" : "Fallback"));
     const last = (result.providers || []).slice(-1)[0];
     if (last && last.kind === "local") meta.appendChild(el("span", "badge local", "Local"));
@@ -290,7 +399,9 @@
     m.appendChild(meta);
     $("messages").appendChild(m);
     scrollMessages();
-    if (ui.state && ui.state.settings.speak_replies) speak(result.text.replace(/^\[Dev fallback[^\]]*\]\s*/, ""));
+    // With a local Piper voice the backend reads the reply aloud itself.
+    const backendVoice = ui.state && ui.state.voice.tts && ui.state.voice.tts.state === "ready";
+    if (result.speech && !backendVoice) speak(result.text.replace(/^\[Dev fallback[^\]]*\]\s*/, ""));
   }
 
   function addError(text) {
@@ -363,6 +474,9 @@
         ui.state = d;
         ui.busy = !!(d.conversation && d.conversation.busy) || d.ai.status === "processing";
         renderAll();
+        break;
+      case "voice.state":
+        if (ui.state) { ui.state.voice = d; renderMic(d); renderSystems(ui.state); updateCore(); }
         break;
       case "ai.status":
         if (ui.state) { ui.state.ai.status = d.status; if (d.error) ui.state.ai.last_error = d.error; }
@@ -451,7 +565,7 @@
   }
 
   // ---------- input ----------
-  async function send(text) {
+  async function send(text, opts = {}) {
     text = text.trim();
     if (!text || ui.busy) return;
     $("input").value = "";
@@ -459,7 +573,7 @@
     ui.busy = true;
     updateCore();
     try {
-      const res = await api("/api/chat", { method: "POST", body: JSON.stringify({ text }) });
+      const res = await api("/api/chat", { method: "POST", body: JSON.stringify({ text, voice: !!opts.voice }) });
       if (res && res.ok && !ui.renderedTurns.has(res.request_id)) {
         ui.renderedTurns.add(res.request_id);
         addAssistant(res);
@@ -489,7 +603,7 @@
   function openDrawer(open) {
     $("drawer").hidden = !open;
     $("scrim").hidden = !open;
-    if (open) $("btn-close-settings").focus();
+    if (open) { $("btn-close-settings").focus(); loadMicDevices(); }
   }
   $("btn-settings").addEventListener("click", () => openDrawer(true));
   $("btn-close-settings").addEventListener("click", () => openDrawer(false));
@@ -512,8 +626,10 @@
   bindToggle("set-mic", "microphone_enabled");
   bindToggle("set-camera", "camera_enabled");
   bindToggle("set-speak", "speak_replies");
+  bindToggle("set-voice-mode", "voice_mode");
   $("set-profile").addEventListener("change", (e) => patch({ active_profile: e.target.value }));
   $("set-sensitivity").addEventListener("change", (e) => patch({ cloud_max_sensitivity: e.target.value }));
+  $("set-mic-device").addEventListener("change", (e) => patch({ microphone_device: e.target.value || null }));
 
   $("btn-reset-conv").addEventListener("click", () => api("/api/conversation/reset", { method: "POST" }).catch((e) => toast(e.message, "err")));
   $("btn-clear-history").addEventListener("click", () => api("/api/history", { method: "DELETE" }).catch((e) => toast(e.message, "err")));

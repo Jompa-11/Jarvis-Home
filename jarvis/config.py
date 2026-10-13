@@ -217,10 +217,32 @@ class PrivacyConfig(BaseModel):
     local_only: bool = False
     # Highest sensitivity of tool output that may be sent to a cloud model.
     cloud_max_sensitivity: Sensitivity = "normal"
-    # Master switches. Phase 1 has no capture implementation, so these only
-    # gate future modules — but they are persisted and enforced from day one.
+    # Master switches. With the microphone switch off, push-to-talk cannot open
+    # the microphone. The camera switch gates a future module.
     microphone_enabled: bool = False
     camera_enabled: bool = False
+
+
+class VoiceConfig(BaseModel):
+    """Push-to-talk voice input and local speech output (Phase 2)."""
+
+    # None = automatic: on when the voice packages and models are installed.
+    enabled: bool | None = None
+    # Microphone used unless another is chosen in Settings. None = system default.
+    input_device: str | None = "Microphone (Realtek(R) Audio)"
+    # The microphone closes after this many seconds even if the button is held.
+    max_capture_s: float = Field(30, ge=2, le=120)
+    # Whisper model: a name under data/models/whisper, or an absolute path.
+    stt_model: str = "large-v3-turbo"
+    stt_device: Literal["auto", "cuda", "cpu"] = "auto"
+    stt_compute_type: str = "int8_float16"  # used on the GPU; the CPU uses int8
+    stt_languages: list[Literal["sv", "en"]] = Field(default_factory=lambda: ["sv", "en"], min_length=1)
+    # Piper voices: names under data/models/piper (without .onnx), or absolute paths.
+    tts_voice_sv: str | None = "sv_SE-nst-medium"
+    # English replies use this voice when it is downloaded, else the Swedish one.
+    tts_voice_en: str | None = "en_GB-alan-medium"
+    # Where models are stored. Default: <data_dir>/models.
+    models_dir: Path | None = None
 
 
 class RetentionConfig(BaseModel):
@@ -255,6 +277,7 @@ class JarvisConfig(BaseModel):
     homeassistant: HomeAssistantConfig = Field(default_factory=HomeAssistantConfig)
     computer: ComputerConfig = Field(default_factory=ComputerConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     profiles: list[ProfileConfig] = Field(
@@ -274,6 +297,13 @@ class JarvisConfig(BaseModel):
         if not self.data_dir.is_absolute():
             self.data_dir = (PROJECT_ROOT / self.data_dir).resolve()
         return self
+
+    @property
+    def models_dir(self) -> Path:
+        d = self.voice.models_dir
+        if d is None:
+            return self.data_dir / "models"
+        return d if d.is_absolute() else (PROJECT_ROOT / d).resolve()
 
     def profile(self, profile_id: str) -> ProfileConfig | None:
         return next((p for p in self.profiles if p.id == profile_id), None)

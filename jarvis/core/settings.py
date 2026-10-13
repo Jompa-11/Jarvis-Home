@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from ..config import JarvisConfig, Sensitivity
 
@@ -28,8 +28,13 @@ class RuntimeSettings(BaseModel):
     camera_enabled: bool
     local_only: bool
     cloud_max_sensitivity: Sensitivity
-    # Read replies aloud with the browser's built-in speech synthesis.
+    # Read typed requests' replies aloud: with Piper when installed, else the
+    # browser's voices. Replies to spoken requests are always read aloud.
     speak_replies: bool = False
+    # Voice mode: every reply is read aloud in full and shown as one line in the chat.
+    voice_mode: bool = False
+    # Input device name for push-to-talk. None = the system default microphone.
+    microphone_device: str | None = Field(None, max_length=200)
 
     def dry_run_categories(self) -> frozenset[str]:
         cats = set()
@@ -52,6 +57,7 @@ class SettingsStore:
             camera_enabled=cfg.privacy.camera_enabled,
             local_only=cfg.privacy.local_only,
             cloud_max_sensitivity=cfg.privacy.cloud_max_sensitivity,
+            microphone_device=cfg.voice.input_device,
         )
         self._overrides: dict[str, Any] = {}
         self.current = self.defaults

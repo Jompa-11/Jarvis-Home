@@ -1,0 +1,14 @@
+# Voice input/output (Phase 2). Install with: .\scripts\setup.ps1 -Voice
+# Everything runs locally. No audio is written to disk or sent anywhere.
+-r requirements.txt
+# Microphone capture and speaker playback (PortAudio)
+sounddevice>=0.5
+numpy>=1.26
+# Speech-to-text: Whisper through CTranslate2, on the NVIDIA GPU when available
+faster-whisper>=1.1
+# CUDA 12 runtime libraries CTranslate2 needs on Windows (cuBLAS + cuDNN 9).
+# Not installed on other platforms (e.g. a Raspberry Pi runs Whisper on the CPU).
+nvidia-cublas-cu12; sys_platform == "win32"
+nvidia-cudnn-cu12>=9,<10; sys_platform == "win32"
+# Text-to-speech: Piper (ONNX, runs on the CPU)
+piper-tts>=1.3

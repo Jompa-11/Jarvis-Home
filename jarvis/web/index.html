@@ -74,7 +74,7 @@
       </section>
 
       <form class="composer" id="composer" autocomplete="off">
-        <button class="mic-btn" id="btn-mic" type="button" disabled aria-label="Microphone unavailable" title="Voice input arrives in Phase 2">
+        <button class="mic-btn" id="btn-mic" type="button" disabled aria-label="Microphone unavailable" title="Microphone unavailable">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="mic-slash" d="M4 4l16 16"/></svg>
         </button>
         <input id="input" type="text" maxlength="4000" placeholder="Ask JARVIS…" aria-label="Message to JARVIS">
@@ -125,12 +125,14 @@
             <option value="personal">Also personal data (e.g. window titles)</option>
           </select>
         </label>
-        <label class="toggle"><input type="checkbox" id="set-mic"><span class="track"></span><span class="label">Microphone master switch<small id="mic-note">No voice engine is installed yet. When off, future voice modules cannot open the microphone.</small></span></label>
+        <label class="toggle"><input type="checkbox" id="set-mic"><span class="track"></span><span class="label">Microphone master switch<small id="mic-note">When off, the microphone cannot be opened. When on, it opens only while you hold the microphone button. Audio stays in memory and is never sent to the cloud.</small></span></label>
+        <label class="field"><span>Microphone</span><select id="set-mic-device"><option value="">System default</option></select></label>
         <label class="toggle"><input type="checkbox" id="set-camera"><span class="track"></span><span class="label">Camera master switch<small>No camera module is installed yet. Footage is never stored by default.</small></span></label>
       </section>
       <section class="setting-group">
         <h3>Voice output</h3>
-        <label class="toggle"><input type="checkbox" id="set-speak"><span class="track"></span><span class="label">Read replies aloud<small>Uses Windows voices through the browser, locally. Swedish needs a Swedish voice installed in Windows.</small></span></label>
+        <label class="toggle"><input type="checkbox" id="set-speak"><span class="track"></span><span class="label">Read replies aloud<small id="speak-note">For typed requests. Replies to spoken requests are always read aloud. Uses the local Piper voice on this computer's speakers when installed, otherwise Windows voices through the browser.</small></span></label>
+        <label class="toggle"><input type="checkbox" id="set-voice-mode"><span class="track"></span><span class="label">Voice mode<small>Every reply is read aloud in full and shown as one line in the chat (click it to see all). Press the microphone button to interrupt.</small></span></label>
       </section>
       <section class="setting-group">
         <h3>Data</h3>
