@@ -28,6 +28,7 @@ from .providers.dev_provider import DevProvider
 from .providers.ollama_provider import OllamaProvider
 from .providers.router import ProviderRouter
 from .providers.usage import UsageTracker
+from .rules import RulesConfig, load_rules, register_rules_tools
 from .system_tools import register_system_tools
 from .voice.interfaces import VoiceController
 
@@ -47,8 +48,10 @@ class JarvisCore:
         ha_transport: httpx.AsyncBaseTransport | None = None,
         persist: bool = True,
         sonos_verify_delay_s: float = 0.5,
+        rules: RulesConfig | None = None,
     ) -> None:
         self.cfg = cfg
+        self.rules = rules if rules is not None else load_rules()
         self.started_at = time.time()
         data = cfg.data_dir if persist else None
         self.bus = EventBus()
@@ -69,6 +72,7 @@ class JarvisCore:
 
         self.registry = ToolRegistry()
         register_system_tools(self.registry, self)
+        register_rules_tools(self.registry, lambda: self.rules)
         register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
         if self.windows.enabled:
             # Desktop control is platform-specific; a headless backend (e.g. a
@@ -79,7 +83,7 @@ class JarvisCore:
         self.confirmations = ConfirmationManager(self.bus)
         self.history = ToolHistory(cfg.retention.tool_history_size)
         self.executor = ToolExecutor(self.registry, self.policy, self.confirmations, self.history, self.bus)
-        self.orchestrator = Orchestrator(cfg, self.settings, self.router, self.registry, self.executor, self.policy, self.bus)
+        self.orchestrator = Orchestrator(cfg, self.settings, self.router, self.registry, self.executor, self.policy, self.bus, rules=self.rules)
 
         self.sonos_error: str | None = None
         self.diagnostics: dict[str, Any] | None = None

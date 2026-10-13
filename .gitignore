@@ -13,6 +13,7 @@ dist/
 .env.*
 !.env.example
 config/jarvis.toml
+config/rules.toml
 
 # Runtime data (logs, usage counters, settings)
 data/
