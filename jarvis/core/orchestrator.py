@@ -68,6 +68,16 @@ Security:
 - Recognizing a voice or face never authorizes sensitive actions; the app handles confirmation."""
 
 
+def build_persona_section(cfg: JarvisConfig) -> str:
+    """The configurable speaking style, appended after the unchanged rules."""
+    if not cfg.persona.enabled or not cfg.persona.style.strip():
+        return ""
+    return (
+        f"\n\nPersona ({cfg.persona.name}). Style only: every rule above takes precedence.\n"
+        f"{cfg.persona.style.strip()}"
+    )
+
+
 class Orchestrator:
     def __init__(
         self,
@@ -86,7 +96,7 @@ class Orchestrator:
         self.executor = executor
         self.policy = policy
         self.bus = bus
-        self.system_prompt = build_system_prompt(cfg)
+        self.system_prompt = build_system_prompt(cfg) + build_persona_section(cfg)
         self.conversation = Conversation(settings.current.active_profile, cfg.retention.max_conversation_messages)
         self.status = "idle"
         self.last_error: str | None = None

@@ -26,6 +26,7 @@ attrs==26.1.0 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
     # via
     #   jsonschema
+    #   phonemizer
     #   referencing
 av==18.1.0 ; python_full_version < '3.12' \
     --hash=sha256:025f84494cb23278498f03b0d8117d3e47a1cbc9c44b97eb31875cf02251e46b \
@@ -183,6 +184,10 @@ click==8.5.0 \
     # via
     #   huggingface-hub
     #   uvicorn
+cloudpickle==3.1.2 \
+    --hash=sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414 \
+    --hash=sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a
+    # via joblib
 colorama==0.4.6 ; sys_platform == 'win32' \
     --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
@@ -224,10 +229,22 @@ ctranslate2==4.8.2 \
     --hash=sha256:f6f0b576c247984d3fc299a372ccc9319b668d6d25b0539f3c861beba15d0504 \
     --hash=sha256:fedda669421a57f8164568ee86ea265727016988d310fcc2e24ca30e9ec457cd
     # via faster-whisper
+dlinfo==2.0.0 \
+    --hash=sha256:88a2bc04f51d01bc604cdc9eb1c3cc0bde89057532ca6a3e71a41f6235433e17 \
+    --hash=sha256:b32cc18e3ea67c0ca9ca409e5b41eed863bd1363dbc9dd3de90fedf11b61e7bc
+    # via phonemizer
 docstring-parser==0.18.0 \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \
     --hash=sha256:b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b
     # via anthropic
+espeakng-loader==0.2.4 \
+    --hash=sha256:08721baf27d13d461f6be6eed9a65277e70d68234ff484fd8b9897b222cdcb6d \
+    --hash=sha256:41f1e08ac9deda2efd1ea9de0b81dab9f5ae3c4b24284f76533d0a7b1dd7abd7 \
+    --hash=sha256:b77477ae2ddf62a748e04e49714eabb2f3a24f344166200b00539083bd669904 \
+    --hash=sha256:d1e798141b46a050cdb75fcf3c17db969bb2c40394f3f4a48910655d547508b9 \
+    --hash=sha256:d27cdca31112226e7299d8562e889d3e38a1e48055c9ee381b45d669072ee59f \
+    --hash=sha256:d7a2928843eaeb2df82f99a370f44e8a630f59b02f9b0d1f168a03c4eeb76b89
+    # via kokoro-onnx
 fastapi==0.143.0 \
     --hash=sha256:1acffe48206a80917cf7dac21992b5c44b25384e8902bf745c1fd9dabcf6c51f \
     --hash=sha256:3e9395fd35276425b61b516a31fdd7c77fe2af83e41b4da22e30696fb1304c5d
@@ -548,6 +565,10 @@ jiter==0.17.0 \
     --hash=sha256:fe15ddf316f1f1f643347d3a474e74ce61880c79a11ec5dca53df20c071bd3e8 \
     --hash=sha256:ffa0380ad091de7d3fc33e17a97ff479851ee18a0a2a3ee56ff3215cdc886656
     # via anthropic
+joblib==1.6.0 \
+    --hash=sha256:2ccc96785b12046c08fd6d55839c12857831b54a3c1673ffadd2f04bfc4eda03 \
+    --hash=sha256:3dbbf9f6e4b592a2357b854608e980fe6390d131d7a82f011a377ef2ebef7aba
+    # via phonemizer
 jsonschema==4.26.0 \
     --hash=sha256:0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326 \
     --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
@@ -556,6 +577,10 @@ jsonschema-specifications==2025.9.1 \
     --hash=sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe \
     --hash=sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d
     # via jsonschema
+kokoro-onnx==0.6.1 \
+    --hash=sha256:50c8de4950d601df41428ee5462a48c8a78bef441bf671f2492e070ef44d8a32 \
+    --hash=sha256:7bbdb66dd53775f71088a99999a9aefdad240740daf54cb09410d8bb1e294e35
+    # via -r requirements-voice.txt
 numpy==2.4.6 ; python_full_version < '3.12' \
     --hash=sha256:001fbb8e08d942dd57599e781f2472269ee7f2755fae407b4f67b2f0b17da3f1 \
     --hash=sha256:0280e0356c0829a18d9de1cb7eee50ec22ca639878d7240307ca0943d73cd2c4 \
@@ -632,7 +657,9 @@ numpy==2.4.6 ; python_full_version < '3.12' \
     # via
     #   -r requirements-voice.txt
     #   ctranslate2
+    #   kokoro-onnx
     #   onnxruntime
+    #   pedalboard
 numpy==2.5.4 ; python_full_version >= '3.12' \
     --hash=sha256:067374eb538c34c745436365cf7b0112595c1d326f21ce4ff340f61230239fbb \
     --hash=sha256:0b4724a19de67bea8cfc4970798efa78bcbbe2ac2613cfac16721a42d44de2a5 \
@@ -703,7 +730,9 @@ numpy==2.5.4 ; python_full_version >= '3.12' \
     # via
     #   -r requirements-voice.txt
     #   ctranslate2
+    #   kokoro-onnx
     #   onnxruntime
+    #   pedalboard
 nvidia-cublas-cu12==12.9.2.10 ; sys_platform == 'win32' \
     --hash=sha256:5572131a59c3eebeeb1c4c8144f772d49372c20124916e072a0e3fc30df421d5 \
     --hash=sha256:623f43027d40d44ceadf0043f002bd25cf353e8f13ce90b9a87057019f560661 \
@@ -748,6 +777,7 @@ onnxruntime==1.31.0 \
     --hash=sha256:e93d7c5fad20afa697ac16f376fd0306ed180f9a376e86106cc0b7d84f53ef87
     # via
     #   faster-whisper
+    #   kokoro-onnx
     #   piper-tts
 opentelemetry-api==1.45.1 \
     --hash=sha256:aa38ed19bcc084ba42782a73255b3582283eced7ad6dddbd6695189e69adfb75 \
@@ -763,6 +793,49 @@ pathvalidate==3.3.1 \
     --hash=sha256:5263baab691f8e1af96092fa5137ee17df5bdfbd6cff1fcac4d6ef4bc2e1735f \
     --hash=sha256:b18c07212bfead624345bb8e1d6141cdcf15a39736994ea0b94035ad2b1ba177
     # via piper-tts
+pedalboard==0.9.26 \
+    --hash=sha256:029e354a9782cc9619715fc695975fbff4e9d0fa9dbd8fc5213f2993ba034778 \
+    --hash=sha256:0459fb09960016fa01415622be70108d5d2c7b85c3ee84743897b58f4dd37802 \
+    --hash=sha256:0f138351370b7d146f97937c1cdd156616385c1d79c679afa80cd3074b83893c \
+    --hash=sha256:1644e42f943bdb6a37500c6d42417df969fb4203247fe12e757b7eeb90413966 \
+    --hash=sha256:16a970a32be619f4066f21ae45f8f23f06480beb4115a57164cbc435c99f64af \
+    --hash=sha256:29861e6a7ab1e000c838d9bf80c6ea4aae0442f5b671a5729dcb9c6652c9536a \
+    --hash=sha256:2df416c5a5e3c8a8adb1d7b062fee86b556ae8d6d0afe76b260db2dfd3fbb39b \
+    --hash=sha256:2ed0b5dc5655c3be070b87c5362f572840c045b8e13dacb9601db3d32b521564 \
+    --hash=sha256:34c565a601445374d13b3268a81619543383b0491aa0194410586e556554e6bc \
+    --hash=sha256:38a7e65670d9fccd3179dea5f5c3c97085bb7d6aec041d8524bc6077db553e20 \
+    --hash=sha256:46277332bb0affc1f2444372e1a5350744e4cb94dd62ec831f5b8e4fa7461876 \
+    --hash=sha256:4aa0a60de75f38d00701625470f649d77e0e39700d841ce9ea2507a7d14f68c9 \
+    --hash=sha256:4d2f7213b59dd54b7ee2bbd480bc3deaf9a91936ad4959d8d7ad551a28987aaa \
+    --hash=sha256:55445ff9e4fee0f7badc04f67a8ff5df391130bd5d0837c09a0f424d2a8133b8 \
+    --hash=sha256:60d785b869ccb6f8e4b149a7c1364e4caa3901396702d047e649a8fd54ec3692 \
+    --hash=sha256:63092f900a0836d4816031701caaeaed882ff9aa528147fc143b6f9c48e90284 \
+    --hash=sha256:64862c6bddc46a853280dc0375ca92460cb3644ac11b203ec403e8a49df7fedb \
+    --hash=sha256:78ebbf4362abd98b1d38d532fc7317861818ede8a2356b3ee721f60500bd0405 \
+    --hash=sha256:816b7063d3befb00263bfee7656932ee5f51788c586d5184d4d61f7a85f61aea \
+    --hash=sha256:90679f25cbc40c642c56bf80129e97be009924e9ee9a92ea33d6c2f540145e47 \
+    --hash=sha256:9519386d714657afd6f9f69cfd9c197efa8021e7cf690e8656238adb07a8e4e5 \
+    --hash=sha256:96e168b77da15ffa647833cf2942b743a8529774c465eebd343e9251e45ab1ae \
+    --hash=sha256:9c3f0c0c886c488bcef8adbf33afbed7a8858999101bff88189ace7b6aa2c26b \
+    --hash=sha256:a34e1e45bce67552b4692f4f18b3f35560293e9feeb89a3b819588df5b307700 \
+    --hash=sha256:a5eaa3ba09668f69b2b0d3ac5913d894d1c1e1103e54102160b552b337359378 \
+    --hash=sha256:a83ae86ef1ba0e38a0c06f001bd96d75714a9c07e192215f4643b3e6efed4bb3 \
+    --hash=sha256:b231c6dfb56bfdc96de12c7d54cfe1848065153f1b1b2d1e44842fbb11cfac1c \
+    --hash=sha256:bf4e4b42ab1596ff1b039a145a06dbbab73ca1d2624feb394ae4050af1565aed \
+    --hash=sha256:c77e917715ef4d5babc8452bc6ecc601d1bf113284ef82d0b962f7989b2f0d84 \
+    --hash=sha256:cb9d67c567424f0f5e95949ab033983ccc058665cd149100d6909da0734b847e \
+    --hash=sha256:d26b98f527fa1ebc30ffd15d58a356a3e04128376928543969056b29a4b0f2d1 \
+    --hash=sha256:d5c61fd02251fca8d6320a5c0983f5ee931b3b901c14e03f38c08b040dc73b5a \
+    --hash=sha256:e1645bbbb36f6c2f50da2ddd6b799198c56ecd5ce238b3626aa886baa4277d87 \
+    --hash=sha256:ed90912944d15fb8d21819d8c2576c409dfdc2695fd8d3a94dc2163c02259833 \
+    --hash=sha256:f5b7d4f72b45d01c39d7d5c5024d5fd091709e72d4e9bc97acd9225fc0d9ce83 \
+    --hash=sha256:fe646d2e343b7c3e48935d031c3feb56e3f1b85b329259fbe903acf60f0676a3 \
+    --hash=sha256:ff9419e27602da64ab6db05e4f06a7870175d161485a9cd5774b32b8f690aed8
+    # via -r requirements-voice.txt
+phonemizer==3.4.0 \
+    --hash=sha256:5ff1215d0efa3606dd1b92449f6d71b5c1741efcc84c6d40c17bfaf64f6ded5f \
+    --hash=sha256:e13231980c50bc671ec0466379ba027260ad9d61929952d8ae9665b3d0f251eb
+    # via kokoro-onnx
 piper-tts==1.8.0 \
     --hash=sha256:25b4d3f31ff70c8fa7151908e00aaa5650cbdf16bca8fcf21299f3941b89a7d3 \
     --hash=sha256:33e7425933e9290fe651ae127916ed1ca6104cfa3d94e9049295dd3a5c449382 \
@@ -1217,6 +1290,7 @@ typing-extensions==4.16.0 \
     #   httpx2
     #   huggingface-hub
     #   opentelemetry-api
+    #   phonemizer
     #   pydantic
     #   pydantic-core
     #   referencing

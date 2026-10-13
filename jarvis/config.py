@@ -223,6 +223,50 @@ class PrivacyConfig(BaseModel):
     camera_enabled: bool = False
 
 
+class VoiceEffectsConfig(BaseModel):
+    """The "JARVIS filter" applied after speech synthesis (see jarvis/voice/effects.py)."""
+
+    enabled: bool = False
+    pitch_semitones: float = Field(-1.5, ge=-6, le=3)  # lower = deeper; tempo is unchanged
+    highpass_hz: float = Field(80, ge=20, le=300)
+    warmth_db: float = Field(1.0, ge=-6, le=6)  # around 180 Hz
+    presence_db: float = Field(3.0, ge=-6, le=9)  # around 3 kHz: clarity
+    air_db: float = Field(2.0, ge=-6, le=9)  # above 8 kHz
+    sheen_mix: float = Field(0.12, ge=0, le=0.6)  # subtle chorus: "digital sheen"
+    reverb_wet: float = Field(0.08, ge=0, le=0.5)
+    reverb_room_size: float = Field(0.15, ge=0, le=1)
+    output_gain: float = Field(1.0, ge=0.1, le=2)
+
+
+class AzureSpeechConfig(BaseModel):
+    """Microsoft Azure neural voices (cloud). Used only for voices named "azure:...".
+
+    The key and region are secrets read from the environment / .env. Text sent
+    for synthesis leaves this machine; audio from the microphone never does.
+    """
+
+    key_env: str = "AZURE_SPEECH_KEY"
+    region_env: str = "AZURE_SPEECH_REGION"
+    # Stop using Azure for the rest of the month after this many characters
+    # (the free F0 tier allows 500,000 neural characters a month). Piper takes over.
+    monthly_char_limit: int = Field(450_000, ge=0)
+    timeout_s: float = Field(8, gt=0, le=30)
+
+
+class PersonaConfig(BaseModel):
+    """Speaking style, added after the system prompt. It never changes the safety
+    or tool rules, which always take precedence."""
+
+    enabled: bool = True
+    name: str = "JARVIS"
+    style: str = (
+        "You are a refined, calm AI butler. Be polite, composed and brief. "
+        "Address the user as \"sir\" now and then (in Swedish too: \"sir\"), not in every sentence. "
+        "A dry, understated wit is welcome when it fits, but never at the expense of clarity, "
+        "and never when something failed or the user is in a hurry. No exclamation marks, no gushing."
+    )
+
+
 class VoiceConfig(BaseModel):
     """Push-to-talk voice input and local speech output (Phase 2)."""
 
@@ -237,10 +281,18 @@ class VoiceConfig(BaseModel):
     stt_device: Literal["auto", "cuda", "cpu"] = "auto"
     stt_compute_type: str = "int8_float16"  # used on the GPU; the CPU uses int8
     stt_languages: list[Literal["sv", "en"]] = Field(default_factory=lambda: ["sv", "en"], min_length=1)
-    # Piper voices: names under data/models/piper (without .onnx), or absolute paths.
+    # Voices per reply language. Formats:
+    #   "sv_SE-nst-medium" or "piper:<name>[#<speaker>]"  local Piper voice under data/models/piper
+    #   "kokoro:<voice>"                                  local Kokoro voice (English only), e.g. kokoro:bm_george
+    #   "azure:<voice>"                                   Azure neural voice (cloud), e.g. azure:en-GB-RyanNeural
     tts_voice_sv: str | None = "sv_SE-nst-medium"
-    # English replies use this voice when it is downloaded, else the Swedish one.
+    # English replies use this voice when it is available, else the Swedish one.
     tts_voice_en: str | None = "en_GB-alan-medium"
+    # Local voices used automatically if a cloud voice fails or its monthly limit is reached.
+    tts_fallback_sv: str = "sv_SE-nst-medium"
+    tts_fallback_en: str = "en_GB-alan-medium"
+    effects: VoiceEffectsConfig = Field(default_factory=VoiceEffectsConfig)
+    azure: AzureSpeechConfig = Field(default_factory=AzureSpeechConfig)
     # Where models are stored. Default: <data_dir>/models.
     models_dir: Path | None = None
 
@@ -278,6 +330,7 @@ class JarvisConfig(BaseModel):
     computer: ComputerConfig = Field(default_factory=ComputerConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    persona: PersonaConfig = Field(default_factory=PersonaConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     profiles: list[ProfileConfig] = Field(
