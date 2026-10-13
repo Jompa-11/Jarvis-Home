@@ -47,9 +47,12 @@ class MailRules(BaseModel):
     important_senders: list[str] = Field(default_factory=list, max_length=500)
     important_domains: list[str] = Field(default_factory=list, max_length=500)
     important_keywords: list[str] = Field(default_factory=list, max_length=500)
+    # Urgent: above important; may break through quiet hours.
+    urgent_senders: list[str] = Field(default_factory=list, max_length=500)
+    urgent_keywords: list[str] = Field(default_factory=list, max_length=500)
     ignored_senders: list[str] = Field(default_factory=list, max_length=1000)
 
-    @field_validator("important_senders", "important_keywords", "ignored_senders")
+    @field_validator("important_senders", "important_keywords", "urgent_senders", "urgent_keywords", "ignored_senders")
     @classmethod
     def _dedupe(cls, v: list[str]) -> list[str]:
         return _clean_list(v)
@@ -65,6 +68,7 @@ class NotificationRules(BaseModel):
     quiet_hours_end: str = "07:00"
     max_announcements_per_hour: int = Field(4, ge=0, le=60)
     morning_summary_time: str = "07:30"
+    urgent_overrides_quiet_hours: bool = True
 
     @field_validator("quiet_hours_start", "quiet_hours_end", "morning_summary_time")
     @classmethod
@@ -111,6 +115,7 @@ class RulesConfig(BaseModel):
             "quiet_hours": f"{n.quiet_hours_start}-{n.quiet_hours_end}",
             "max_announcements_per_hour": n.max_announcements_per_hour,
             "morning_summary_time": n.morning_summary_time,
+            "urgent_overrides_quiet_hours": n.urgent_overrides_quiet_hours,
             "preferences": self.preferences.notes,
         }
 

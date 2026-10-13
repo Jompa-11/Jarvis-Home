@@ -30,6 +30,8 @@ class RuntimeSettings(BaseModel):
     cloud_max_sensitivity: Sensitivity
     # Read replies aloud with the browser's built-in speech synthesis.
     speak_replies: bool = False
+    # Monitoring paused: nothing interrupts; everything waits for the summary.
+    monitoring_paused: bool = False
 
     def dry_run_categories(self) -> frozenset[str]:
         cats = set()

@@ -41,6 +41,18 @@ class ConfirmIn(BaseModel):
     approve: bool
 
 
+class PauseIn(BaseModel):
+    paused: bool
+
+
+class MuteIn(BaseModel):
+    minutes: float = Field(ge=0, le=24 * 60)  # 0 = unmute
+
+
+class AckIn(BaseModel):
+    id: str | None = Field(None, max_length=32)  # None = acknowledge all
+
+
 def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[str] | None = None) -> FastAPI:
     token = token or secrets.token_urlsafe(32)
     port = core.cfg.server.port
@@ -175,6 +187,27 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
             envs = {"anthropic_api_key": core.cfg.anthropic.api_key_env, "home_assistant_token": core.cfg.homeassistant.token_env}
             core.diagnostics = await asyncio.to_thread(diagnostics.collect, core.cfg.data_dir, envs)
         return core.diagnostics
+
+    # -- monitoring and notifications -----------------------------------------------
+    @app.get("/api/monitoring")
+    async def monitoring() -> dict[str, Any]:
+        return core.monitor.snapshot()
+
+    @app.post("/api/monitoring/pause")
+    async def monitoring_pause(body: PauseIn) -> dict[str, Any]:
+        await core.update_settings({"monitoring_paused": body.paused})  # persisted like other settings
+        return core.monitor.snapshot()
+
+    @app.post("/api/notifications/mute")
+    async def notifications_mute(body: MuteIn) -> dict[str, Any]:
+        core.monitor.mute(body.minutes)
+        return core.monitor.snapshot()
+
+    @app.post("/api/notifications/ack")
+    async def notifications_ack(body: AckIn) -> dict[str, Any]:
+        count = core.monitor.notifier.acknowledge(body.id)
+        core.bus.publish("monitoring", core.monitor.snapshot())
+        return {"acknowledged": count}
 
     # -- live events -------------------------------------------------------------
     @app.websocket("/ws")

@@ -19,8 +19,14 @@ important_domains = [
 # A subject (or preview) containing any of these words is important. Case-insensitive.
 important_keywords = [
   "faktura", "betala", "förfaller", "påminnelse", "skola", "läkare",
-  "vårdcentral", "leverans", "säkerhetskod", "verifieringskod", "invoice", "payment due",
+  "vårdcentral", "leverans", "invoice", "payment due",
 ]
+# URGENT: above important. Urgent items may break through quiet hours (see
+# [notifications] urgent_overrides_quiet_hours) and are always clearly marked.
+urgent_senders = [
+  # "larm@mitt-larmbolag.se",
+]
+urgent_keywords = ["säkerhetskod", "verifieringskod", "larm", "akut"]
 # Mail from these senders or domains is skipped entirely (never announced, never classified).
 ignored_senders = [
   # "nyhetsbrev@exempel.se",
@@ -31,8 +37,9 @@ ignored_senders = [
 [notifications]
 quiet_hours_start = "22:00"      # nothing is read aloud between these times;
 quiet_hours_end = "07:00"        # everything waits for the morning summary
-max_announcements_per_hour = 4   # spoken announcements per hour; the rest go to the summary
+max_announcements_per_hour = 4   # interrupting notifications (e.g. Windows pop-ups) per hour; the rest go to the summary
 morning_summary_time = "07:30"
+urgent_overrides_quiet_hours = true  # urgent items still notify during quiet hours
 
 # --------------------------------------------------------- Preferences ----
 # Free-text wishes about style. Added to the AI's instructions as "Owner's preferences".

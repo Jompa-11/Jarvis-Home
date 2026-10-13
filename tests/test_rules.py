@@ -14,7 +14,9 @@ from jarvis.rules import RULES_EXAMPLE_PATH, NotificationRules, RulesConfig, bui
 
 def test_example_rules_load_with_expected_defaults():
     r = load_rules(RULES_EXAMPLE_PATH)
-    assert "faktura" in r.mail.important_keywords and "säkerhetskod" in r.mail.important_keywords
+    assert "faktura" in r.mail.important_keywords
+    assert {"säkerhetskod", "larm", "akut"} <= set(r.mail.urgent_keywords)
+    assert r.notifications.urgent_overrides_quiet_hours is True
     assert "skatteverket.se" in r.mail.important_domains
     n = r.notifications
     assert (n.quiet_hours_start, n.quiet_hours_end, n.morning_summary_time) == ("22:00", "07:00", "07:30")

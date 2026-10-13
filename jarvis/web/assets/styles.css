@@ -259,6 +259,25 @@ button, input, select { font: inherit; color: inherit; }
 .stop-btn { background: var(--err-soft); color: var(--err); border: 1px solid rgba(255, 93, 122, 0.4); }
 .composer-hint { text-align: center; font-size: 11.5px; color: var(--text-faint); min-height: 16px; }
 
+/* ---------- Notifications / monitoring ---------- */
+.mon-state { font-size: 11px; letter-spacing: .04em; text-transform: none; color: var(--ok); }
+.mon-state.paused { color: var(--warn); }
+.mon-state.off { color: var(--text-faint); }
+.mon-controls { margin: 2px 0 6px; flex-wrap: wrap; }
+.mon-controls .btn { padding: 5px 10px; font-size: 11px; }
+.mon-meta { font-size: 11px; color: var(--text-faint); margin-bottom: 6px; }
+.notify-list { max-height: 240px; overflow-y: auto; margin: 0 -6px; padding: 0 6px; scrollbar-width: thin; }
+.notify { padding: 8px 0; border-top: 1px solid rgba(90, 190, 255, 0.07); cursor: default; }
+.notify.unread .notify-title { color: var(--text); font-weight: 600; }
+.notify-head { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--text-faint); }
+.notify-title { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+.notify-detail { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+.prio { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); text-transform: uppercase; letter-spacing: .06em; }
+.prio.urgent { color: #fff; background: rgba(255, 60, 90, .55); border-color: var(--err); }
+.prio.high { color: var(--warn); border-color: rgba(255, 181, 71, .5); }
+.prio.normal { color: var(--cyan); }
+.prio.low { color: var(--text-faint); }
+
 /* ---------- Tool activity ---------- */
 .tool-list { overflow-y: auto; margin: 0 -6px; padding: 0 6px; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: rgba(95, 200, 255, 0.2) transparent; }
 .tool { padding: 10px 0; border-top: 1px solid rgba(90, 190, 255, 0.07); animation: rise .25s ease-out both; }

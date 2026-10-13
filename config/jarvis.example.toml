@@ -66,6 +66,7 @@ model = "qwen2.5:3b"           # small, tool-capable; try "qwen2.5:7b" on a mach
 keep_alive = "10m"             # how long the model stays in GPU memory after the last request
 num_ctx = 8192                 # context window; too small and Ollama silently forgets the start
 temperature = 0.2              # lower = more consistent tool use
+num_predict = 1024             # max tokens per reply; stops a stuck model from blocking the GPU
 
 # ---------------------------------------------------- Home Assistant ----
 [homeassistant]
@@ -99,6 +100,14 @@ description = "File Explorer"
 # [computer.allowed_apps.spotify]
 # command = ["C:\\Users\\YOU\\AppData\\Roaming\\Spotify\\Spotify.exe"]
 # description = "Spotify"
+
+# --------------------------------------------------------- Monitoring ----
+# Background monitoring and notifications. What is important, quiet hours and
+# the morning summary time are in config/rules.toml.
+[monitoring]
+enabled = true
+retention_days = 14              # how long JARVIS remembers what it already notified (hashes + times only)
+# windows_notifications = true   # omit for automatic (on Windows)
 
 # ------------------------------------------------------------ Privacy ----
 [privacy]

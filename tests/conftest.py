@@ -97,6 +97,8 @@ def make_core(tmp_path, fake_ha, monkeypatch):
             sonos_verify_delay_s=0.01,
             # Never read the owner's real config/rules.toml from tests.
             rules=rules if rules is not None else RulesConfig(),
+            # Never show real Windows notifications from tests.
+            notification_channels=[],
         )
         core.sonos._verify_timeout_s = 0.3
         created.append(core)

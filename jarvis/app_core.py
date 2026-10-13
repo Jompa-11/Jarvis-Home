@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import time
 from typing import Any
 
@@ -28,6 +29,9 @@ from .providers.dev_provider import DevProvider
 from .providers.ollama_provider import OllamaProvider
 from .providers.router import ProviderRouter
 from .providers.usage import UsageTracker
+from .monitoring.channels import UIChannel, WindowsToastChannel
+from .monitoring.notifier import NotificationChannel
+from .monitoring.service import MonitorService, register_monitor_tools
 from .rules import RulesConfig, load_rules, register_rules_tools
 from .system_tools import register_system_tools
 from .voice.interfaces import VoiceController
@@ -49,6 +53,7 @@ class JarvisCore:
         persist: bool = True,
         sonos_verify_delay_s: float = 0.5,
         rules: RulesConfig | None = None,
+        notification_channels: list[NotificationChannel] | None = None,
     ) -> None:
         self.cfg = cfg
         self.rules = rules if rules is not None else load_rules()
@@ -70,9 +75,21 @@ class JarvisCore:
         self.voice = VoiceController()
         self.voice.set_enabled(self.settings.current.microphone_enabled)
 
+        if notification_channels is None:
+            notification_channels = self._default_channels()
+        self.monitor = MonitorService(
+            cfg.monitoring,
+            lambda: self.rules,
+            channels=notification_channels,
+            state_path=data / "monitor_state.json" if data else None,
+            on_change=lambda: self.bus.publish("monitoring", self.monitor.snapshot()),
+        )
+        self.monitor.notifier.paused = self.settings.current.monitoring_paused
+
         self.registry = ToolRegistry()
         register_system_tools(self.registry, self)
         register_rules_tools(self.registry, lambda: self.rules)
+        register_monitor_tools(self.registry, self.monitor)
         register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
         if self.windows.enabled:
             # Desktop control is platform-specific; a headless backend (e.g. a
@@ -90,6 +107,18 @@ class JarvisCore:
         self._bg: asyncio.Task | None = None
         self._state_watch: asyncio.Task | None = None
 
+    def _default_channels(self) -> list[NotificationChannel]:
+        channels: list[NotificationChannel] = [UIChannel(self.bus.publish)]
+        want_windows = self.cfg.monitoring.windows_notifications
+        if want_windows is None:
+            want_windows = sys.platform == "win32"
+        if want_windows:
+            try:
+                channels.append(WindowsToastChannel())
+            except RuntimeError as exc:
+                log.info("Windows notifications unavailable: %s", exc)
+        return channels
+
     def _privacy(self) -> PrivacyConfig:
         st = self.settings.current
         return self.cfg.privacy.model_copy(update={"local_only": st.local_only, "cloud_max_sensitivity": st.cloud_max_sensitivity})
@@ -99,10 +128,13 @@ class JarvisCore:
         await self.refresh_integrations()
         self._bg = asyncio.create_task(self._health_loop(), name="jarvis-health")
         self._state_watch = asyncio.create_task(self._push_state_after_actions(), name="jarvis-state-watch")
+        if self.cfg.monitoring.enabled:
+            await self.monitor.start()
         log.info("JARVIS core started")
 
     async def stop(self) -> None:
         self.orchestrator.cancel()
+        await self.monitor.stop()
         for task in (self._bg, self._state_watch):
             if task:
                 task.cancel()
@@ -155,6 +187,8 @@ class JarvisCore:
         st, changed = self.settings.update(patch)
         if "microphone_enabled" in changed:
             self.voice.set_enabled(st.microphone_enabled)
+        if "monitoring_paused" in changed:
+            self.monitor.set_paused(st.monitoring_paused)
         if changed & PRIVACY_KEYS:
             self.router.set_privacy(self._privacy())
         if changed & (PRIVACY_KEYS | {"active_profile"}):
@@ -194,6 +228,7 @@ class JarvisCore:
                 "sonos": {"state": sonos_state, "detail": sonos_detail, "speakers": speakers},
             },
             "voice": self.voice.status(),
+            "monitoring": self.monitor.snapshot(),
             "camera": {"state": "not_implemented", "master_switch": "on" if st.camera_enabled else "off"},
             "computer": {**self.windows.status(), "dry_run": st.dry_run_computer},
             "settings": st.model_dump(),

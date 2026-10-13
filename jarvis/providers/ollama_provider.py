@@ -54,7 +54,7 @@ class OllamaProvider(AIProvider):
             "messages": [{"role": "system", "content": system}, *to_ollama_messages(messages)],
             "stream": False,
             "keep_alive": self._cfg.keep_alive,
-            "options": {"num_ctx": self._cfg.num_ctx, "temperature": self._cfg.temperature},
+            "options": {"num_ctx": self._cfg.num_ctx, "temperature": self._cfg.temperature, "num_predict": self._cfg.num_predict},
         }
         if tools:
             body["tools"] = [

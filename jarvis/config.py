@@ -130,6 +130,10 @@ class OllamaConfig(BaseModel):
     num_ctx: int = Field(8192, ge=2048, le=131072)
     # Lower temperature makes small models choose tools more consistently.
     temperature: float = Field(0.2, ge=0, le=2)
+    # Maximum tokens per reply. Without a cap a model stuck in a repetition loop
+    # keeps the GPU busy until the context is full, and Ollama queues every later
+    # request (including background monitoring) behind it.
+    num_predict: int = Field(1024, ge=64, le=8192)
 
 
 class AIConfig(BaseModel):
@@ -223,6 +227,17 @@ class PrivacyConfig(BaseModel):
     camera_enabled: bool = False
 
 
+class MonitoringConfig(BaseModel):
+    """Background monitoring and notifications. Priorities and quiet hours live in rules.toml."""
+
+    enabled: bool = True
+    # Days to remember which events were already notified (hashes + times only).
+    retention_days: int = Field(14, ge=1, le=365)
+    # Windows pop-up notifications. None = automatic (on Windows only).
+    windows_notifications: bool | None = None
+    recent_limit: int = Field(100, ge=10, le=1000)
+
+
 class RetentionConfig(BaseModel):
     max_conversation_messages: int = Field(60, ge=4, le=1000)
     tool_history_size: int = Field(200, ge=10, le=5000)
@@ -255,6 +270,7 @@ class JarvisConfig(BaseModel):
     homeassistant: HomeAssistantConfig = Field(default_factory=HomeAssistantConfig)
     computer: ComputerConfig = Field(default_factory=ComputerConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
+    monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     profiles: list[ProfileConfig] = Field(

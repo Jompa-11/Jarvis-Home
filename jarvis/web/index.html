@@ -89,6 +89,17 @@
         <h2 class="panel-title"><span>Authorization required</span></h2>
         <div id="confirm-list"></div>
       </section>
+      <section class="panel" id="panel-notify">
+        <h2 class="panel-title"><span>Notiser</span><span class="mon-state" id="mon-state">Bevakning: –</span></h2>
+        <div class="btn-row mon-controls">
+          <button class="btn" id="btn-mon-pause" type="button">Pausa</button>
+          <button class="btn" id="btn-mon-mute" type="button">Tysta 1 h</button>
+          <button class="btn" id="btn-mon-ack" type="button">Kvittera alla</button>
+        </div>
+        <div class="mon-meta" id="mon-meta"></div>
+        <ol class="notify-list" id="notify-list"></ol>
+        <p class="tool-empty" id="notify-empty">Inga notiser ännu.</p>
+      </section>
       <section class="panel panel-grow">
         <h2 class="panel-title"><span>Tool activity</span><button class="text-btn" id="btn-clear-history" type="button">Clear</button></h2>
         <ol class="tool-list" id="tool-list"></ol>
