@@ -238,6 +238,21 @@ class MonitoringConfig(BaseModel):
     recent_limit: int = Field(100, ge=10, le=1000)
 
 
+class MailConfig(BaseModel):
+    """E-mail monitoring (Gmail, read-only). Importance rules live in rules.toml."""
+
+    enabled: bool = True  # still needs `python -m jarvis mail-login` before anything is read
+    provider: Literal["gmail"] = "gmail"
+    poll_minutes: float = Field(15, ge=1, le=1440)
+    max_per_poll: int = Field(20, ge=1, le=100)
+    # On the first check after start, look this far back.
+    initial_lookback_hours: float = Field(12, ge=0, le=168)
+    # Gmail search filter for what is watched (e.g. "in:inbox -category:promotions").
+    query: str = Field("in:inbox", max_length=200)
+    classify_timeout_s: float = Field(30, gt=0, le=120)
+    recent_limit: int = Field(50, ge=5, le=500)
+
+
 class RetentionConfig(BaseModel):
     max_conversation_messages: int = Field(60, ge=4, le=1000)
     tool_history_size: int = Field(200, ge=10, le=5000)
@@ -271,6 +286,7 @@ class JarvisConfig(BaseModel):
     computer: ComputerConfig = Field(default_factory=ComputerConfig)
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    mail: MailConfig = Field(default_factory=MailConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     profiles: list[ProfileConfig] = Field(

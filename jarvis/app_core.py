@@ -29,6 +29,9 @@ from .providers.dev_provider import DevProvider
 from .providers.ollama_provider import OllamaProvider
 from .providers.router import ProviderRouter
 from .providers.usage import UsageTracker
+from .mail.base import MailProvider
+from .mail.gmail import GmailProvider
+from .mail.watcher import MailWatcher, register_mail_tools
 from .monitoring.channels import UIChannel, WindowsToastChannel
 from .monitoring.notifier import NotificationChannel
 from .monitoring.service import MonitorService, register_monitor_tools
@@ -54,6 +57,7 @@ class JarvisCore:
         sonos_verify_delay_s: float = 0.5,
         rules: RulesConfig | None = None,
         notification_channels: list[NotificationChannel] | None = None,
+        mail_provider: MailProvider | None = None,
     ) -> None:
         self.cfg = cfg
         self.rules = rules if rules is not None else load_rules()
@@ -90,6 +94,13 @@ class JarvisCore:
         register_system_tools(self.registry, self)
         register_rules_tools(self.registry, lambda: self.rules)
         register_monitor_tools(self.registry, self.monitor)
+        self.mail: MailWatcher | None = None
+        if cfg.mail.enabled:
+            provider = mail_provider if mail_provider is not None else GmailProvider(query=cfg.mail.query)
+            # Mail is classified by the LOCAL model only: the Ollama provider object itself,
+            # never the router, so routes or cloud providers can never be used for mail.
+            self.mail = MailWatcher(cfg.mail, provider, self.monitor, lambda: self.rules, lambda: self.router.providers.get("ollama"))
+            register_mail_tools(self.registry, self.mail)
         register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
         if self.windows.enabled:
             # Desktop control is platform-specific; a headless backend (e.g. a
@@ -130,11 +141,17 @@ class JarvisCore:
         self._state_watch = asyncio.create_task(self._push_state_after_actions(), name="jarvis-state-watch")
         if self.cfg.monitoring.enabled:
             await self.monitor.start()
+            if self.mail is not None:
+                self.mail._publish_state()
+                if self.mail.provider.signed_in():
+                    self.monitor.scheduler.every("mail", self.cfg.mail.poll_minutes * 60, self.mail.poll, run_now=True)
         log.info("JARVIS core started")
 
     async def stop(self) -> None:
         self.orchestrator.cancel()
         await self.monitor.stop()
+        if self.mail is not None:
+            await self.mail.provider.aclose()
         for task in (self._bg, self._state_watch):
             if task:
                 task.cancel()

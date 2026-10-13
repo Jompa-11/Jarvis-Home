@@ -109,6 +109,19 @@ enabled = true
 retention_days = 14              # how long JARVIS remembers what it already notified (hashes + times only)
 # windows_notifications = true   # omit for automatic (on Windows)
 
+# --------------------------------------------------------------- Mail ----
+# Gmail, READ-ONLY (gmail.readonly). Sign in once with:
+#   .\.venv\Scripts\python.exe -m jarvis mail-login --client-secret C:\path\client_secret.json
+# The token is stored in Windows Credential Manager, never in a file.
+# What is important is decided by config/rules.toml first; other mail is
+# classified by the LOCAL Ollama model only (never a cloud model), with no tools.
+[mail]
+enabled = true
+poll_minutes = 15
+max_per_poll = 20
+initial_lookback_hours = 12      # how far back the first check after start looks
+query = "in:inbox"               # Gmail search filter, e.g. "in:inbox -category:promotions"
+
 # ------------------------------------------------------------ Privacy ----
 [privacy]
 local_only = false
