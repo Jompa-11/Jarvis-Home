@@ -12,3 +12,7 @@ nvidia-cublas-cu12; sys_platform == "win32"
 nvidia-cudnn-cu12>=9,<10; sys_platform == "win32"
 # Text-to-speech: Piper (ONNX, runs on the CPU)
 piper-tts>=1.3
+# Optional local English voices (Kokoro, Apache-2.0 model; no Swedish)
+kokoro-onnx>=0.4
+# "JARVIS filter" effect chain after speech synthesis (pitch, EQ, chorus, reverb)
+pedalboard>=0.9

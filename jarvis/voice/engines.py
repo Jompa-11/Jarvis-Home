@@ -21,8 +21,9 @@ from pathlib import Path
 from typing import Any
 
 from ..config import VoiceConfig
-from .interfaces import AudioCapture, AudioFrame, AudioPlayback, SpeechToText, TextToSpeech, Transcript, VoiceController
-from .models import piper_voice_path, whisper_model_dir
+from .interfaces import AudioCapture, AudioFrame, AudioPlayback, SpeechToText, Transcript, VoiceController
+from .models import whisper_model_dir
+from .tts import AzureUsage, VoiceTTS, make_backend
 
 log = logging.getLogger(__name__)
 
@@ -269,51 +270,7 @@ class FasterWhisperSTT(SpeechToText):
         return {"model": self.model_dir.name, "device": self.device or f"{self.requested_device} (loads on first use)", "languages": list(self.languages)}
 
 
-# --------------------------------------------------------- text-to-speech ----
-class PiperTTS(TextToSpeech):
-    """Piper voices (ONNX on the CPU). One voice per language."""
-
-    name = "piper"
-    is_cloud = False
-
-    def __init__(self, voices: dict[str, Path]) -> None:
-        import piper  # noqa: F401
-
-        if not voices:
-            raise ValueError("no Piper voice configured")
-        self.voice_paths = voices
-        self.languages = tuple(voices)
-        self._voices: dict[str, Any] = {}
-        self._lock = threading.Lock()
-
-    def _voice(self, language: str) -> Any:
-        with self._lock:
-            if language not in self._voices:
-                from piper import PiperVoice
-
-                self._voices[language] = PiperVoice.load(self.voice_paths[language])
-            return self._voices[language]
-
-    def _synth(self, text: str, language: str) -> bytes:
-        voice = self._voice(language)
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(voice.config.sample_rate)
-            for chunk in voice.synthesize(text):
-                wav.writeframes(chunk.audio_int16_bytes)
-        return buf.getvalue()
-
-    async def synthesize(self, text: str, language: str) -> bytes:
-        if language not in self.voice_paths:
-            language = self.languages[0]
-        return await asyncio.to_thread(self._synth, text, language)
-
-    def describe(self) -> dict[str, Any]:
-        return {"voices": {lang: p.stem for lang, p in self.voice_paths.items()}}
-
-
+# ----------------------------------------------------------------- playback ----
 class SoundDevicePlayback(AudioPlayback):
     name = "sounddevice"
 
@@ -369,15 +326,66 @@ def build_voice_controller(cfg: VoiceConfig, models_dir: Path) -> VoiceControlle
             )
         except Exception as exc:
             vc.unavailable["stt"] = f"Speech recognition unavailable ({type(exc).__name__}). Install with: .\\scripts\\setup.ps1 -Voice"
-    voices = {lang: piper_voice_path(models_dir, name) for lang, name in (("sv", cfg.tts_voice_sv), ("en", cfg.tts_voice_en)) if name}
-    voices = {lang: p for lang, p in voices.items() if p.exists()}
-    if not voices:
-        vc.unavailable["tts"] = "No Piper voice downloaded. Run: python -m jarvis voice-models --download"
-    else:
-        try:
-            vc.tts = PiperTTS(voices)
-            vc.playback = SoundDevicePlayback()
-        except Exception as exc:
-            vc.tts = vc.playback = None
-            vc.unavailable["tts"] = f"Speech output unavailable ({type(exc).__name__}). Install with: .\\scripts\\setup.ps1 -Voice"
+    try:
+        vc.tts = build_tts(cfg, models_dir)
+        vc.playback = SoundDevicePlayback()
+    except Exception as exc:
+        vc.tts = vc.playback = None
+        vc.unavailable["tts"] = (
+            f"No voice available ({exc}). Run: python -m jarvis voice-models --download"
+            if isinstance(exc, (FileNotFoundError, ValueError))
+            else f"Speech output unavailable ({type(exc).__name__}). Install with: .\\scripts\\setup.ps1 -Voice"
+        )
     return vc
+
+
+def build_tts(cfg: VoiceConfig, models_dir: Path, *, azure_transport: Any = None) -> VoiceTTS:
+    """The configured voice per language, a local fallback for each, and the filter.
+
+    A voice that cannot be created (not downloaded, package missing) is replaced
+    by its fallback; a cloud voice without a key still gets created and falls
+    back at speaking time, so adding the key later needs only a restart.
+    """
+    from ..secrets import get_secret
+
+    usage = AzureUsage(models_dir.parent / "voice_usage.json", cfg.azure.monthly_char_limit)
+    key, region = get_secret(cfg.azure.key_env), get_secret(cfg.azure.region_env)
+    cache: dict[str, Any] = {}
+
+    def backend(spec: str) -> Any:
+        if spec not in cache:
+            cache[spec] = make_backend(spec, models_dir, cfg.azure, usage, key=key, region=region, transport=azure_transport)
+        return cache[spec]
+
+    voices: dict[str, Any] = {}
+    fallbacks: dict[str, Any] = {}
+    errors: list[str] = []
+    for lang, spec, fb in (("sv", cfg.tts_voice_sv, cfg.tts_fallback_sv), ("en", cfg.tts_voice_en, cfg.tts_fallback_en)):
+        if not spec:
+            continue
+        fallback = None
+        try:
+            fallback = backend(fb)
+        except Exception as exc:
+            errors.append(f"{fb}: {exc}")
+        try:
+            voices[lang] = backend(spec)
+        except Exception as exc:
+            errors.append(f"{spec}: {exc}")
+            if fallback is not None:
+                voices[lang] = fallback
+        if fallback is not None and lang in voices:
+            fallbacks[lang] = fallback
+    if errors:
+        log.warning("Some voices are unavailable: %s", "; ".join(errors))
+    if not voices:
+        raise FileNotFoundError("; ".join(errors) or "no voice configured")
+    effects = None
+    if cfg.effects.enabled:
+        try:
+            from .effects import JarvisFilter
+
+            effects = JarvisFilter(cfg.effects)
+        except Exception as exc:
+            log.warning("JARVIS filter unavailable (%s); speaking without it", exc)
+    return VoiceTTS(voices, fallbacks, effects)

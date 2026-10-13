@@ -6,6 +6,8 @@
     python -m jarvis diagnose     inspect this machine (hardware, devices, services)
     python -m jarvis toolcheck    check that the local AI model uses JARVIS's tools (dry-run)
     python -m jarvis voice-models show which voice models are present (--download fetches missing ones)
+    python -m jarvis voice-audition --lang en --voices "piper:en_GB-alan-medium,kokoro:bm_george"
+                                  play candidate voices without and with the JARVIS filter
 """
 
 from __future__ import annotations
@@ -102,7 +104,11 @@ def _serve(cfg: JarvisConfig, desktop: bool, open_browser: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS home assistant")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck", "voice-models"])
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck", "voice-models", "voice-audition"])
+    parser.add_argument("--lang", choices=["sv", "en"], help="voice-audition: language of the test sentence")
+    parser.add_argument("--voices", help="voice-audition: comma-separated voice specs (default: the configured voice)")
+    parser.add_argument("--effect", action="append", help="voice-audition: filter override, e.g. --effect pitch_semitones=-2")
+    parser.add_argument("--only", choices=["plain", "filtered"], help="voice-audition: play only one variant")
     parser.add_argument("--download", action="store_true", help="voice-models: download missing models into data/models")
     parser.add_argument("--spoken", action="store_true", help="toolcheck: send the prompts as spoken requests")
     parser.add_argument("--config", help="Path to jarvis.toml")
@@ -136,15 +142,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "voice-models":
         from .voice import models
 
-        voices = [v for v in (cfg.voice.tts_voice_sv, cfg.voice.tts_voice_en) if v]
+        v = cfg.voice
+        voices, kokoro = models.local_voice_names([s for s in (v.tts_voice_sv, v.tts_voice_en, v.tts_fallback_sv, v.tts_fallback_en) if s])
         if args.download:
-            models.download(cfg.models_dir, cfg.voice.stt_model, voices)
-        rows = models.status(cfg.models_dir, cfg.voice.stt_model, voices)
+            models.download(cfg.models_dir, v.stt_model, voices, kokoro)
+        rows = models.status(cfg.models_dir, v.stt_model, voices, kokoro)
         for r in rows:
             print(f"  {r['kind']:<8} {r['name']:<22} {'present' if r['present'] else 'MISSING'}  {r['path']}")
         if not all(r["present"] for r in rows):
             print("Missing models can be fetched with: python -m jarvis voice-models --download")
             return 1
+        return 0
+    if args.command == "voice-audition":
+        from .voice.audition import audition
+
+        lang = args.lang or "en"
+        voices = [s.strip() for s in (args.voices or "").split(",") if s.strip()]
+        if not voices:
+            voices = [s for s in ((cfg.voice.tts_voice_en,) if lang == "en" else (cfg.voice.tts_voice_sv,)) if s]
+        overrides = {}
+        for item in args.effect or []:
+            key, _, value = item.partition("=")
+            overrides[key.strip()] = float(value)
+        effects = cfg.voice.effects.model_copy(update=overrides)
+        effects = type(effects).model_validate(effects.model_dump())  # validate the overrides
+        asyncio.run(audition(cfg.voice, cfg.models_dir, lang, voices, effects=effects, only=args.only))
         return 0
     if args.command == "diagnose":
         from . import diagnostics
