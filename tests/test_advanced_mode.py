@@ -150,13 +150,37 @@ async def test_every_outside_reader_blocks_commands_for_the_rest_of_the_turn(mak
     assert "Blockerat" in err and reader in err
 
 
-async def test_a_fresh_question_is_not_blocked(make_core):
+async def test_the_block_survives_into_the_next_question_until_the_chat_is_reset(make_core):
+    """The taint follows the conversation: asking again in the same chat does not clear it."""
     model = ScriptedProvider("anthropic", "cloud", [
         [("clipboard_read", {})], "Det står hej.",
+        [("shell_run_powershell", {"command": "Get-Date"})], "Nej.",
         [("shell_run_powershell", {"command": "Get-Date"})], "Klart.",
     ])
     core = make_core({"anthropic": model}, **CLOUD, computer={"enabled": True, "dry_run": True})
     await core.update_settings({"advanced_mode": True})
     await core.orchestrator.handle("vad har jag kopierat?")
-    await core.orchestrator.handle("kör Get-Date")  # a new message starts a clean turn
+
+    await core.orchestrator.handle("kör Get-Date")  # a NEW question, same conversation
+    assert {h["tool"]: h["status"] for h in core.history.list()}["shell_run_powershell"] == "denied"
+    err = [m for m in model.requests[-1]["messages"] if m.role == "tool"][-1].content
+    assert "Blockerat" in err and "clipboard_read" in err
+
+    core.orchestrator.reset_conversation()  # the untrusted text is gone from the chat
+    core.history.clear()
+    await core.orchestrator.handle("kör Get-Date")
     assert {h["tool"]: h["status"] for h in core.history.list()}["shell_run_powershell"] == "succeeded"
+
+
+async def test_trimming_the_old_messages_away_clears_the_block(make_core):
+    """When the untrusted message falls out of the history, the restriction goes with it."""
+    model = ScriptedProvider("anthropic", "cloud", [[("clipboard_read", {})], "Det står hej.", "Hej själv."])
+    core = make_core({"anthropic": model}, **CLOUD, computer={"enabled": True, "dry_run": True})
+    await core.orchestrator.handle("vad har jag kopierat?")
+    conv = core.orchestrator.conversation
+    assert conv.untrusted_sources() == {"clipboard_read"}
+
+    await core.orchestrator.handle("hej")  # a later exchange the history can be cut back to
+    conv.max_messages = 2
+    assert conv.trim()
+    assert conv.untrusted_sources() == set()  # the untrusted text is no longer in the chat

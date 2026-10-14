@@ -340,5 +340,11 @@ class JarvisCore:
             "profiles": [p.model_dump() for p in self.cfg.profiles],
             "active_profile": profile.model_dump() if profile else None,
             "pending_confirmations": self.confirmations.pending(),
-            "conversation": {"id": self.orchestrator.conversation.id, "busy": self.orchestrator.busy},
+            "conversation": {
+                "id": self.orchestrator.conversation.id,
+                "busy": self.orchestrator.busy,
+                # Shown in the UI: the chat holds text written by someone else, so
+                # actions are confirmed until it is cleared.
+                "untrusted_context": sorted(self.orchestrator.conversation.untrusted_sources()),
+            },
         }

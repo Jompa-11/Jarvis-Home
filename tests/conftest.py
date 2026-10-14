@@ -78,6 +78,9 @@ class FakeDesktopAPI:
         self.volume, self.muted = 40, False
         self.actions: list[tuple] = []
         self.clipboard = ""
+        # An ordinary window is in front; a test can make it a console instead.
+        self.window_kind = {"title": "Testfönster", "class_name": "Notepad", "process": "notepad.exe"}
+        self.open_windows: list = []
 
     def get_volume(self) -> tuple[int, bool]:
         return self.volume, self.muted
@@ -104,7 +107,15 @@ class FakeDesktopAPI:
         self.actions.append(("clipboard", text))
 
     def active_window_title(self) -> str:
-        return "Testfönster"
+        return self.window_kind["title"]
+
+    def active_window_kind(self) -> dict:
+        return dict(self.window_kind)
+
+    def list_windows(self) -> list:
+        from jarvis.computer.windows import WindowInfo
+
+        return self.open_windows or [WindowInfo(handle=1, title="Testfönster", process_id=1)]
 
     def window_action(self, hwnd: int, action: str) -> None:
         self.actions.append(("window", hwnd, action))
@@ -173,9 +184,10 @@ def make_core(tmp_path, fake_ha, monkeypatch):
             # Never touch Gmail or Windows Credential Manager from tests.
             mail_provider=mail_provider if mail_provider is not None else FakeMailProvider(signed_in=False),
             # Never read the real Start menu, touch the real desktop or run PowerShell from a test.
-            launcher=AppLauncher(cfg.computer, list_apps=lambda: list(FAKE_APPS), launch=lambda cmd: None),
+            launcher=AppLauncher(cfg.computer, list_apps=lambda: list(FAKE_APPS), launch=lambda cmd: None, is_windows=lambda: True),
             desktop=Desktop(api=FakeDesktopAPI()),
-            file_actions=FileActions(home=tmp_path / "home", notes_folder=tmp_path / "home" / "Documents", recycle=lambda p: p.unlink()),
+            file_actions=FileActions(home=tmp_path / "home", notes_folder=tmp_path / "home" / "Documents",
+                                     recycle=lambda p: p.unlink(), is_windows=lambda: True),
             shell=shell if shell is not None else PowerShellRunner(run=_no_shell),
         )
         core.sonos._verify_timeout_s = 0.3

@@ -27,6 +27,11 @@ log = logging.getLogger(__name__)
 IS_WINDOWS = sys.platform == "win32"
 
 
+def is_windows() -> bool:
+    """Injectable in tests, so the suite is green on Linux too."""
+    return sys.platform == "win32"
+
+
 class ComputerError(Exception):
     pass
 

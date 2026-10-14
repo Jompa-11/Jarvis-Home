@@ -348,9 +348,18 @@
       .finally(() => { b.disabled = false; });
   });
 
+  // The chat holds text written by someone else, so actions are confirmed until it is cleared.
+  function renderUntrusted(conversation) {
+    const note = $("untrusted-note");
+    const sources = (conversation && conversation.untrusted_context) || [];
+    note.hidden = sources.length === 0;
+    note.textContent = sources.length ? `Läst extern data (${sources.join(", ")}) – handlingar bekräftas. "New conversation" nollställer.` : "";
+  }
+
   function renderAll() {
     const s = ui.state;
     if (!s) return;
+    renderUntrusted(s.conversation);
     renderMonitoring(s.monitoring);
     renderHeader(s);
     renderSystems(s);

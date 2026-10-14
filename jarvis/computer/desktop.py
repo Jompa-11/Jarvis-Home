@@ -17,7 +17,7 @@ from .winapi_desktop import (
     VK_MEDIA_STOP,
     WindowsDesktopAPI,
 )
-from .windows import ComputerError, WindowInfo, _enum_windows
+from .windows import ComputerError, WindowInfo
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +32,15 @@ NAMED_KEYS = {
     "printscreen": 0x2C, "capslock": 0x14, "plus": 0xBB, "minus": 0xBD, "comma": 0xBC, "period": 0xBE,
 }
 NAMED_KEYS.update({f"f{i}": 0x6F + i for i in range(1, 25)})
+BLOCKED_COMBOS = {
+    frozenset({"win", "r"}): "Kör-dialogen",
+    frozenset({"win", "x"}): "snabbmenyn med PowerShell",
+}
+# A window that takes typed text as commands. Typing or pressing Enter there is HIGH risk.
+CONSOLE_CLASSES = {"consolewindowclass", "cascadia_hosting_window_class", "virtualconsoleclass", "pseudoconsolewindowclass"}
+CONSOLE_PROCESSES = {"powershell.exe", "pwsh.exe", "cmd.exe", "windowsterminal.exe", "wt.exe", "openconsole.exe",
+                     "conhost.exe", "bash.exe", "wsl.exe", "python.exe", "py.exe", "powershell_ise.exe"}
+RUN_DIALOG_TITLES = {"kör", "run"}
 MEDIA_KEYS = {"play": VK_MEDIA_PLAY_PAUSE, "pause": VK_MEDIA_PLAY_PAUSE, "playpause": VK_MEDIA_PLAY_PAUSE,
               "next": VK_MEDIA_NEXT, "previous": VK_MEDIA_PREV, "stop": VK_MEDIA_STOP}
 WINDOW_ACTIONS = ("focus", "minimize", "maximize", "restore", "close")
@@ -47,6 +56,11 @@ def parse_shortcut(combo: str) -> list[int]:
     names = set(parts)
     if {"ctrl", "control"} & names and "alt" in names and {"del", "delete"} & names:
         raise ComputerError("Ctrl+Alt+Del kan inte skickas av JARVIS. Tryck det själv på tangentbordet.")
+    canonical = {"control": "ctrl", "windows": "win", "cmd": "win"}
+    folded = {canonical.get(p, p) for p in parts}
+    for combo, what in BLOCKED_COMBOS.items():
+        if combo <= folded:
+            raise ComputerError(f"JARVIS trycker aldrig {'+'.join(sorted(combo))}; det öppnar {what}. Gör det själv.")
     vks: list[int] = []
     for part in parts:
         if part in MODIFIERS:
@@ -141,6 +155,29 @@ class Desktop:
         except Exception:
             return None
 
+    def active_window_kind(self) -> dict[str, str]:
+        try:
+            return self.api.active_window_kind()
+        except Exception:
+            return {"title": "", "class_name": "", "process": ""}
+
+    def typing_is_dangerous(self) -> str | None:
+        """What makes typing into the window in front risky, or None.
+
+        A terminal, a console or the Run dialog turns typed text into commands, so
+        those always need the owner's confirmation. If the window cannot be read,
+        JARVIS treats it as risky rather than guessing.
+        """
+        kind = self.active_window_kind()
+        title, cls, proc = kind.get("title", ""), (kind.get("class_name") or "").lower(), (kind.get("process") or "").lower()
+        if title.strip().lower() in RUN_DIALOG_TITLES or (cls == "#32770" and proc == "explorer.exe"):
+            return "Kör-dialogen"
+        if cls in CONSOLE_CLASSES or proc in CONSOLE_PROCESSES:
+            return f"ett kommandofönster ({proc or cls})"
+        if not proc and not cls:
+            return "ett okänt fönster"
+        return None
+
     # -- clipboard -----------------------------------------------------------
     def read_clipboard(self) -> dict[str, Any]:
         self._require_windows("Urklipp")
@@ -160,7 +197,7 @@ class Desktop:
     # -- windows -------------------------------------------------------------
     def windows(self) -> list[WindowInfo]:
         self._require_windows("Fönsterlistan")
-        return _enum_windows()
+        return self.api.list_windows()
 
     def window(self, title_contains: str, action: str, *, dry_run: bool) -> dict[str, Any]:
         action = action.strip().lower()

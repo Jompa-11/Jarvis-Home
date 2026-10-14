@@ -33,7 +33,7 @@ async def test_child_and_guest_are_denied_personal_tools(make_core, profile, rol
 
 
 async def test_owner_is_allowed_personal_tools(make_core):
-    model = ScriptedProvider("anthropic", "cloud", [[("rules_show", {}), ("monitor_status", {}), ("files_search", {"query": "x"}), ("monitor_summary_now", {})], "Ok."])
+    model = ScriptedProvider("anthropic", "cloud", [[("monitor_summary_now", {}), ("rules_show", {}), ("monitor_status", {}), ("files_search", {"query": "x"})], "Ok."])
     core = make_core({"anthropic": model}, **CLOUD)
     await core.orchestrator.handle("vad har hänt idag?")
     assert {h["tool"]: h["status"] for h in core.history.list()} == {

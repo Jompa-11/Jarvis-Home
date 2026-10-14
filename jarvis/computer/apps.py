@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..config import ComputerConfig
+from .windows import is_windows as _is_windows
 
 log = logging.getLogger(__name__)
 
@@ -93,11 +94,13 @@ class AppLauncher:
         *,
         list_apps: Callable[[], list[App]] = read_start_apps,
         launch: Callable[[list[str]], None] | None = None,
+        is_windows: Callable[[], bool] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.cfg = cfg
         self._list_apps = list_apps
         self._launch = launch or _launch_detached
+        self.is_windows = is_windows or _is_windows
         self.clock = clock
         self._apps: list[App] = []
         self._read_at: float | None = None
@@ -156,7 +159,7 @@ class AppLauncher:
             return {"app": name, "would_run": command}
         from .windows import ComputerError
 
-        if sys.platform != "win32":
+        if not self.is_windows():
             raise ComputerError("Att starta program fungerar bara på Windows.")
         self._launch(command)
         log.info("Started program %s", name)

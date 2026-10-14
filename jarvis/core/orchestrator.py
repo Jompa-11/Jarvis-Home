@@ -186,7 +186,10 @@ class Orchestrator:
         self._set_status("processing")
         self.bus.publish("turn.started", {"request_id": request_id, "text": text, "category": category})
 
-        ctx = ToolContext(profile_id=profile.id, role=profile.role, request_id=request_id)
+        # Untrusted text from EARLIER questions still counts: the taint follows the
+        # conversation, not the turn.
+        ctx = ToolContext(profile_id=profile.id, role=profile.role, request_id=request_id,
+                          tainted_by=self.conversation.untrusted_sources())
         dry_cats = st.dry_run_categories()
         turn_sensitivity = "normal"
         executions: list[str] = []
@@ -223,12 +226,11 @@ class Orchestrator:
 
                 for call in resp.tool_calls:
                     self._raise_if_cancelled()
+                    ctx.tainted_by = self.conversation.untrusted_sources()
                     ex, result = await self.executor.execute(call, ctx, dry_cats)
                     executions.append(ex.id)
                     spec = self.registry.get(call.name)
-                    if spec is not None and spec.untrusted_output and result.ok:
-                        # From here on this turn, tools that run commands are refused.
-                        ctx.tainted_by.add(call.name)
+                    untrusted = bool(spec is not None and spec.untrusted_output and result.ok)
                     if SENSITIVITY_ORDER.get(result.sensitivity, 0) > SENSITIVITY_ORDER[turn_sensitivity]:
                         turn_sensitivity = result.sensitivity
                     self.conversation.append(
@@ -239,8 +241,11 @@ class Orchestrator:
                             tool_name=call.name,
                             is_error=not result.ok,
                             sensitivity=result.sensitivity,
+                            untrusted=untrusted,
                         )
                     )
+                    if untrusted:
+                        ctx.tainted_by = self.conversation.untrusted_sources()
             else:
                 final_text = "I stopped after reaching the maximum number of tool steps for one request."
         except NoProviderAvailable as exc:
@@ -259,6 +264,7 @@ class Orchestrator:
             "text": final_text,
             "category": category,
             "tool_groups": sorted(tool_groups) if tool_groups else "all",
+            "untrusted_context": sorted(self.conversation.untrusted_sources()),
             "provider": last.get("provider"),
             "model": last.get("model"),
             "is_fallback": any(p["is_fallback"] for p in providers_used),

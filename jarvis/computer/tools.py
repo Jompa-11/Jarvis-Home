@@ -7,6 +7,7 @@ registered in :mod:`jarvis.computer.tools_desktop`.
 from __future__ import annotations
 
 import asyncio
+import re
 
 from ..core.tools import Risk, ToolContext, ToolRegistry, ToolResult, ToolSpec, schema
 from .apps import AppLauncher
@@ -16,8 +17,33 @@ from .web import WebOpener
 from .windows import ComputerError, WindowsControl
 
 
+# Programs that turn typed text into commands, or change the system. Opening one is
+# HIGH risk, so the owner is always asked first, even in an ordinary conversation.
+SHELL_APPS = re.compile(
+    r"\b(powershell|pwsh|power shell|cmd|cmd\.exe|command prompt|kommandotolk\w*|terminal\w*|wt|windows terminal|"
+    r"regedit|registereditor\w*|mmc|gpedit|grupprincip\w*|taskschd|schemal\w*|task scheduler|kör|run|"
+    r"wsl|bash|git bash|konsol\w*|console)\b",
+    re.I,
+)
+
+
+def shell_app_risk(args: dict) -> Risk:
+    """HIGH for a shell or system tool, MEDIUM for an ordinary program."""
+    return Risk.HIGH if SHELL_APPS.search(str(args.get("app", ""))) else Risk.MEDIUM
+
+
 def _fail(exc: Exception) -> ToolResult:
     return ToolResult(ok=False, error=str(exc))
+
+
+def _safe_url(site: str) -> str:
+    """The full address a site word resolves to, for the confirmation text."""
+    from .web import resolve_target
+
+    try:
+        return resolve_target(site)
+    except Exception:
+        return str(site)
 
 
 def register_computer_tools(
@@ -56,8 +82,11 @@ def register_computer_tools(
         f"Starta ett installerat program på datorn, t.ex. 'öppna spotify', 'starta discord', 'öppna anteckningar'. "
         f"Genvägar: {aliases}. Alla installerade program går att starta med sitt namn.",
         schema({"app": {"type": "string", "minLength": 1, "maxLength": 60, "description": "Programmets namn, t.ex. 'spotify'."}}, ["app"]),
-        open_app, Risk.MEDIUM, "computer", supports_dry_run=True,
-        confirm_summary=lambda a: f"Starta programmet '{a['app']}'",
+        open_app, Risk.MEDIUM, "computer", supports_dry_run=True, risk_for_args=shell_app_risk,
+        confirm_summary=lambda a: (
+            f"Starta KOMMANDOFÖNSTRET '{a['app']}'" if SHELL_APPS.search(str(a.get("app", "")))
+            else f"Starta programmet '{a['app']}'"
+        ),
     ))
 
     # -- web -----------------------------------------------------------------
@@ -78,7 +107,7 @@ def register_computer_tools(
         "Öppna en webbplats i webbläsaren, t.ex. 'öppna youtube' eller 'öppna svt.se'. Bara http och https.",
         schema({"site": {"type": "string", "minLength": 2, "maxLength": 300, "description": "Namn eller adress, t.ex. 'youtube'."}}, ["site"]),
         open_web, Risk.LOW, "computer", supports_dry_run=True,
-        confirm_summary=lambda a: f"Öppna {a['site']} i webbläsaren",
+        confirm_summary=lambda a: f"Öppna {_safe_url(a['site'])} i webbläsaren",
     ))
     registry.register(ToolSpec(
         "computer_search_web",

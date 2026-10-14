@@ -24,7 +24,7 @@ from typing import Any
 
 from ..providers.base import ToolCall
 from .events import EventBus
-from .permissions import ConfirmationManager, Decision, PermissionPolicy
+from .permissions import ConfirmationManager, Decision, PermissionPolicy, PolicyResult
 from .tools import Risk, ToolContext, ToolRegistry, ToolResult, ToolValidationError
 
 log = logging.getLogger(__name__)
@@ -112,14 +112,16 @@ class ToolExecutor:
         ex.summary = spec.describe_call(args)
         ex.sensitivity = spec.output_sensitivity
 
-        # 2a. A turn that has read someone else's text may not run commands.
+        # 2a. Text written by someone else is in the conversation. Running a command
+        # is refused outright; everything else that CHANGES something must be confirmed
+        # by the owner, so an instruction hidden in an e-mail cannot act on its own.
+        read = ", ".join(sorted(ctx.tainted_by))
         if spec.blocked_after_untrusted and ctx.tainted_by:
-            read = ", ".join(sorted(ctx.tainted_by))
             return self._finish(
                 ex,
                 ToolResult(ok=False, error=(
-                    f"Blockerat: JARVIS har redan läst data utifrån i den här frågan ({read}). "
-                    "Avancerat läge är avstängt resten av frågan. Be om kommandot i ett nytt meddelande."
+                    f"Blockerat: JARVIS har läst data utifrån i den här konversationen ({read}). "
+                    "Avancerat läge är avstängt tills samtalet nollställs."
                 )),
                 status="denied",
             )
@@ -128,6 +130,10 @@ class ToolExecutor:
         verdict = self.policy.evaluate(ctx.role, spec, args)
         ex.risk = verdict.risk.name.lower()
         ex.decision = verdict.decision.value
+        if ctx.tainted_by and verdict.decision is Decision.ALLOW and verdict.risk > Risk.READ:
+            verdict = PolicyResult(Decision.CONFIRM, f"JARVIS har läst data utifrån ({read}).", verdict.risk)
+            ex.decision = verdict.decision.value
+            ex.summary = f"[Efter extern data: {read}] {ex.summary}"
         if verdict.decision is Decision.DENY:
             return self._finish(ex, ToolResult(ok=False, error=f"Permission denied: {verdict.reason}"), status="denied")
 

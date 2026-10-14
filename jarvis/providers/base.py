@@ -38,6 +38,10 @@ class ChatMessage:
     tool_name: str | None = None
     is_error: bool = False
     sensitivity: str = "normal"
+    # True when this content was written by someone outside the household
+    # (e-mail, file names, clipboard, window titles). While such a message is
+    # still in the conversation, actions need the owner's confirmation.
+    untrusted: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
     # Per-turn situational context (time, profile, dry-run) sent with a user
     # message. Kept separate so the visible transcript shows only what was typed.

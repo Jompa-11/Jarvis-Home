@@ -24,6 +24,7 @@ from typing import Any
 
 from ..files.index import SKIP_DIRS, is_secret_name, known_folder
 from .windows import ComputerError
+from .windows import is_windows as _is_windows
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class FileActions:
     home: Path = field(default_factory=lambda: Path.home())
     notes_folder: Path | None = None
     recycle: Callable[[Path], None] | None = None
+    is_windows: Callable[[], bool] | None = None
     undo_stack: list[UndoStep] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -57,6 +59,7 @@ class FileActions:
         if self.notes_folder is None:
             self.notes_folder = known_folder("Documents") or (self.home / "Documents")
         self.recycle = self.recycle or recycle_to_bin
+        self.is_windows = self.is_windows or _is_windows
 
     # -- paths ---------------------------------------------------------------
     def folder(self, name: str) -> Path:
@@ -178,7 +181,7 @@ class FileActions:
         target = self.check(path, must_exist=True)
         if dry_run:
             return {"would_move_to_recycle_bin": str(target)}
-        if sys.platform != "win32":
+        if not self.is_windows():
             raise ComputerError("Papperskorgen finns bara på Windows.")
         self.recycle(target)
         log.info("Moved %s to the Recycle Bin", target.name)

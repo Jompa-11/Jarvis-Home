@@ -21,7 +21,8 @@ CLOUD = {"ai": {"routes": {name: [{"provider": "anthropic"}] for name in ("conve
 
 def launcher(apps=None, **cfg):
     started: list[list[str]] = []
-    lau = AppLauncher(ComputerConfig(**cfg), list_apps=lambda: list(apps if apps is not None else FAKE_APPS), launch=started.append)
+    lau = AppLauncher(ComputerConfig(**cfg), list_apps=lambda: list(apps if apps is not None else FAKE_APPS),
+                      launch=started.append, is_windows=lambda: True)
     return lau, started
 
 
@@ -163,7 +164,9 @@ def actions(tmp_path):
     (home / "Documents").mkdir(parents=True)
     (home / "Downloads").mkdir()
     binned: list = []
-    return FileActions(home=home, notes_folder=home / "Documents", recycle=lambda p: (binned.append(p), p.unlink())), home, binned
+    fa = FileActions(home=home, notes_folder=home / "Documents",
+                     recycle=lambda p: (binned.append(p), p.unlink()), is_windows=lambda: True)
+    return fa, home, binned
 
 
 def test_create_note_rename_move_and_undo(tmp_path):

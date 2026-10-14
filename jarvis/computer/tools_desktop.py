@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 from ..core.tools import Risk, ToolContext, ToolRegistry, ToolResult, ToolSpec, schema
@@ -12,6 +13,18 @@ from .windows import ComputerError
 
 POWER_ACTIONS = ("shutdown", "restart", "sleep", "logout")
 POWER_SV = {"shutdown": "Stänga av datorn", "restart": "Starta om datorn", "sleep": "Försätta datorn i viloläge", "logout": "Logga ut"}
+
+
+def typing_risk(desktop: Desktop, args: dict) -> Risk:
+    """Typing into a terminal, a console or the Run dialog is HIGH: the text becomes commands."""
+    return Risk.HIGH if desktop.typing_is_dangerous() else Risk.MEDIUM
+
+
+def keys_risk(desktop: Desktop, args: dict) -> Risk:
+    """Enter into such a window runs what is already typed there."""
+    keys = str(args.get("keys", "")).lower()
+    presses_enter = bool(re.search(r"\b(enter|return)\b", keys))
+    return Risk.HIGH if presses_enter and desktop.typing_is_dangerous() else Risk.MEDIUM
 
 
 def _fail(exc: Exception) -> ToolResult:
@@ -124,13 +137,17 @@ def register_desktop_tools(
         "input_type_text", "Skriv text i fönstret som är aktivt just nu, t.ex. 'skriv hej i chatten'.",
         schema({"text": {"type": "string", "minLength": 1, "maxLength": 2000}}, ["text"]),
         type_text, Risk.MEDIUM, "computer", supports_dry_run=True, output_sensitivity="personal",
-        confirm_summary=lambda a: f"Skriva {len(a['text'])} tecken i det aktiva fönstret",
+        risk_for_args=lambda a: typing_risk(desktop, a),
+        confirm_summary=lambda a: (
+            f"Skriva i {desktop.typing_is_dangerous() or 'det aktiva fönstret'}: {a['text'][:120]}"
+        ),
     ))
     registry.register(ToolSpec(
         "input_press_keys", "Tryck ett kortkommando i det aktiva fönstret, t.ex. 'ctrl+s' eller 'alt+tab'. Ctrl+Alt+Del går inte.",
         schema({"keys": {"type": "string", "minLength": 1, "maxLength": 60, "description": "T.ex. 'ctrl+s'."}}, ["keys"]),
         press_keys, Risk.MEDIUM, "computer", supports_dry_run=True, output_sensitivity="personal",
-        confirm_summary=lambda a: f"Trycka {a['keys']}",
+        risk_for_args=lambda a: keys_risk(desktop, a),
+        confirm_summary=lambda a: f"Trycka {a['keys']} i {desktop.typing_is_dangerous() or 'det aktiva fönstret'}",
     ))
     registry.register(ToolSpec(
         "clipboard_read", "Läs texten som ligger i urklipp ('vad har jag kopierat?').",

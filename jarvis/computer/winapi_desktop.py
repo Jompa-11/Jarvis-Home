@@ -242,6 +242,14 @@ class WindowsDesktopAPI:
         elif action == "restore":
             user32.ShowWindow(hwnd, SW_RESTORE)
 
+    def active_window_kind(self) -> dict[str, str]:  # pragma: no cover - real windows
+        return active_window_kind()
+
+    def list_windows(self):  # pragma: no cover - real windows
+        from .windows import _enum_windows
+
+        return _enum_windows()
+
     def active_window_title(self) -> str | None:  # pragma: no cover - real windows
         user32 = _window_api()
         hwnd = user32.GetForegroundWindow()
@@ -263,3 +271,36 @@ class WindowsDesktopAPI:
         flag = {"shutdown": "/s", "restart": "/r", "logout": "/l"}[action]
         args = ["shutdown.exe", flag] + ([] if flag == "/l" else ["/t", "0"])
         subprocess.Popen(args, creationflags=_NO_WINDOW, close_fds=True)  # noqa: S603 - fixed arguments
+
+
+def active_window_kind() -> dict[str, str]:  # pragma: no cover - real windows
+    """Title, window class and process of the window in front, for risk decisions."""
+    import os
+
+    user32 = _window_api()
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return {"title": "", "class_name": "", "process": ""}
+    length = user32.GetWindowTextLengthW(hwnd)
+    title_buf = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, title_buf, length + 1)
+    class_buf = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetClassNameW(hwnd, class_buf, 256)
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    process = ""
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    handle = kernel32.OpenProcess(0x1000, False, pid.value)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if handle:
+        try:
+            size = wintypes.DWORD(1024)
+            buf = ctypes.create_unicode_buffer(size.value)
+            kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+            if kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                process = os.path.basename(buf.value)
+        finally:
+            kernel32.CloseHandle(handle)
+    return {"title": title_buf.value, "class_name": class_buf.value, "process": process}

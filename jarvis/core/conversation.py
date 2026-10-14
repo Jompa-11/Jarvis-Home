@@ -52,6 +52,14 @@ class Conversation:
             m.raw.clear()
         return True
 
+    def untrusted_sources(self) -> set[str]:
+        """Tools whose untrusted output is STILL in the conversation.
+
+        Trimming the old messages away, or resetting the conversation, clears this
+        by itself: the taint lives exactly as long as the text that caused it.
+        """
+        return {m.tool_name or "okänd källa" for m in self._messages if m.untrusted}
+
     def transcript(self) -> list[dict]:
         """User-visible transcript (no tool plumbing)."""
         out = []
