@@ -16,6 +16,7 @@ from typing import Any
 from ..config import SENSITIVITY_ORDER, JarvisConfig
 from ..providers.base import ChatMessage
 from ..providers.router import NoProviderAvailable, ProviderRouter, categorize
+from ..rules import RulesConfig, build_preferences_section
 from .conversation import Conversation
 from .events import EventBus
 from .executor import ToolExecutor, result_to_model_text
@@ -66,6 +67,7 @@ class Orchestrator:
         executor: ToolExecutor,
         policy: PermissionPolicy,
         bus: EventBus,
+        rules: RulesConfig | None = None,
     ) -> None:
         self.cfg = cfg
         self.settings = settings
@@ -74,7 +76,8 @@ class Orchestrator:
         self.executor = executor
         self.policy = policy
         self.bus = bus
-        self.system_prompt = build_system_prompt(cfg)
+        # The rules first and unchanged; the owner's preferences only after them.
+        self.system_prompt = build_system_prompt(cfg) + build_preferences_section(rules)
         self.conversation = Conversation(settings.current.active_profile, cfg.retention.max_conversation_messages)
         self.status = "idle"
         self.last_error: str | None = None

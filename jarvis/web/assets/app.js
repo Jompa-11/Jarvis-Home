@@ -134,6 +134,13 @@
     list.appendChild(statusRow(v.mic_state === "not_implemented" ? "na" : "off", "Microphone", micDetail, v.mic_state === "not_implemented" ? "Off" : v.mic_state.replace("_", " ")));
     list.appendChild(statusRow("na", "Camera", "No camera module installed (Phase 3)", "Off"));
 
+    const mon = s.monitoring;
+    if (mon) {
+      const active = Object.values(mon.sources || {}).filter((v) => v.state === "active").length;
+      const [mdot, mval, mcls] = mon.paused ? ["warn", "Pausad", "warn"] : mon.muted ? ["warn", "Tystad", "warn"] : ["ok", "Aktiv", "ok"];
+      list.appendChild(statusRow(mdot, "Bevakning", `${active} källa/källor · kanaler: ${(mon.channels || []).map((c) => c.name).join(", ") || "inga"}`, mval, mcls));
+    }
+
     const c = s.computer;
     let cd = "ok", cv = "Live", cc = "ok", cdetail = `${c.allowed_apps.length} approved apps`;
     if (!c.enabled) { cd = "off"; cv = "Off"; cc = ""; cdetail = c.platform_supported ? "Disabled in configuration" : "Not available on this platform"; }
@@ -239,9 +246,58 @@
     }
   }
 
+  // ---------- monitoring / notifications ----------
+  const PRIO_LABEL = { urgent: "AKUT", high: "Viktig", normal: "Normal", low: "Låg" };
+  const DELIVERY_LABEL = { immediate: "meddelad direkt", passive: "visad här", summary: "sparad till sammanfattningen" };
+
+  function renderMonitoring(m) {
+    if (!m) return;
+    const st = $("mon-state");
+    st.textContent = m.paused ? "Bevakning: pausad" : m.muted ? "Bevakning: aktiv (tystad)" : "Bevakning: aktiv";
+    st.className = "mon-state" + (m.paused || m.muted ? " paused" : "");
+    $("btn-mon-pause").textContent = m.paused ? "Återuppta" : "Pausa";
+    $("btn-mon-mute").textContent = m.muted ? "Sluta tysta" : "Tysta 1 h";
+    const watching = Object.entries(m.sources || {}).filter(([, v]) => v.state === "active").map(([k]) => k);
+    const parts = [
+      `Bevakar: ${watching.length ? watching.join(", ") : "inget ännu"}`,
+      `Tysta timmar ${m.quiet_hours}${m.quiet_now ? " (nu)" : ""}`,
+      `Sammanfattning ${m.morning_summary_time}`,
+    ];
+    if (m.waiting_for_summary) parts.push(`${m.waiting_for_summary} väntar`);
+    if (m.muted && m.muted_until) parts.push(`tystad till ${new Date(m.muted_until * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+    $("mon-meta").textContent = parts.join(" · ");
+    const list = $("notify-list");
+    list.replaceChildren();
+    for (const n of m.recent || []) {
+      const li = el("li", "notify" + (n.acknowledged || n.delivery === "summary" ? "" : " unread"));
+      const head = el("div", "notify-head");
+      head.appendChild(el("span", "prio " + n.priority, PRIO_LABEL[n.priority] || n.priority));
+      head.appendChild(el("span", null, fmtTime(n.created_at)));
+      head.appendChild(el("span", null, DELIVERY_LABEL[n.delivery] || n.delivery));
+      li.appendChild(head);
+      li.appendChild(el("div", "notify-title", (n.priority === "urgent" ? "🚨 " : "") + n.title));
+      if (n.detail) li.appendChild(el("div", "notify-detail", n.detail));
+      li.title = `${n.reason}${n.channels.length ? " · kanaler: " + n.channels.join(", ") : ""}${n.acknowledged ? "" : " · klicka för att kvittera"}`;
+      if (!n.acknowledged) li.addEventListener("click", () => api("/api/notifications/ack", { method: "POST", body: JSON.stringify({ id: n.id }) }).catch((e) => toast(e.message, "err")));
+      list.appendChild(li);
+    }
+    $("notify-empty").hidden = (m.recent || []).length > 0;
+  }
+
+  $("btn-mon-pause").addEventListener("click", () => {
+    const paused = !(ui.state && ui.state.monitoring && ui.state.monitoring.paused);
+    api("/api/monitoring/pause", { method: "POST", body: JSON.stringify({ paused }) }).then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } }).catch((e) => toast(e.message, "err"));
+  });
+  $("btn-mon-mute").addEventListener("click", () => {
+    const muted = ui.state && ui.state.monitoring && ui.state.monitoring.muted;
+    api("/api/notifications/mute", { method: "POST", body: JSON.stringify({ minutes: muted ? 0 : 60 }) }).then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } }).catch((e) => toast(e.message, "err"));
+  });
+  $("btn-mon-ack").addEventListener("click", () => api("/api/notifications/ack", { method: "POST", body: JSON.stringify({}) }).catch((e) => toast(e.message, "err")));
+
   function renderAll() {
     const s = ui.state;
     if (!s) return;
+    renderMonitoring(s.monitoring);
     renderHeader(s);
     renderSystems(s);
     renderZones(s);
@@ -363,6 +419,9 @@
         ui.state = d;
         ui.busy = !!(d.conversation && d.conversation.busy) || d.ai.status === "processing";
         renderAll();
+        break;
+      case "monitoring":
+        if (ui.state) { ui.state.monitoring = d; renderMonitoring(d); renderSystems(ui.state); }
         break;
       case "ai.status":
         if (ui.state) { ui.state.ai.status = d.status; if (d.error) ui.state.ai.last_error = d.error; }

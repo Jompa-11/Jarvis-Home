@@ -66,6 +66,7 @@ model = "qwen2.5:3b"           # small, tool-capable; try "qwen2.5:7b" on a mach
 keep_alive = "10m"             # how long the model stays in GPU memory after the last request
 num_ctx = 8192                 # context window; too small and Ollama silently forgets the start
 temperature = 0.2              # lower = more consistent tool use
+num_predict = 1024             # max tokens per reply; stops a stuck model from blocking the GPU
 
 # ---------------------------------------------------- Home Assistant ----
 [homeassistant]
@@ -99,6 +100,27 @@ description = "File Explorer"
 # [computer.allowed_apps.spotify]
 # command = ["C:\\Users\\YOU\\AppData\\Roaming\\Spotify\\Spotify.exe"]
 # description = "Spotify"
+
+# --------------------------------------------------------- Monitoring ----
+# Background monitoring and notifications. What is important, quiet hours and
+# the morning summary time are in config/rules.toml.
+[monitoring]
+enabled = true
+retention_days = 14              # how long JARVIS remembers what it already notified (hashes + times only)
+# windows_notifications = true   # omit for automatic (on Windows)
+
+# --------------------------------------------------------------- Mail ----
+# Gmail, READ-ONLY (gmail.readonly). Sign in once with:
+#   .\.venv\Scripts\python.exe -m jarvis mail-login --client-secret C:\path\client_secret.json
+# The token is stored in Windows Credential Manager, never in a file.
+# What is important is decided by config/rules.toml first; other mail is
+# classified by the LOCAL Ollama model only (never a cloud model), with no tools.
+[mail]
+enabled = true
+poll_minutes = 15
+max_per_poll = 20
+initial_lookback_hours = 12      # how far back the first check after start looks
+query = "in:inbox"               # Gmail search filter, e.g. "in:inbox -category:promotions"
 
 # ------------------------------------------------------------ Privacy ----
 [privacy]

@@ -5,6 +5,8 @@
     python -m jarvis check        validate configuration and show what is configured
     python -m jarvis diagnose     inspect this machine (hardware, devices, services)
     python -m jarvis toolcheck    check that the local AI model uses JARVIS's tools (dry-run)
+    python -m jarvis mail-login --client-secret <file>   sign in to Gmail (read-only) in the browser
+    python -m jarvis mail-logout  revoke the Gmail token and remove it from Credential Manager
 """
 
 from __future__ import annotations
@@ -96,7 +98,9 @@ def _serve(cfg: JarvisConfig, desktop: bool, open_browser: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS home assistant")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck"])
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck", "mail-login", "mail-logout"])
+    parser.add_argument("--client-secret", help="mail-login: path to the OAuth client JSON (Desktop app) from Google Cloud")
+    parser.add_argument("--forget-client", action="store_true", help="mail-logout: also remove the stored OAuth client")
     parser.add_argument("--config", help="Path to jarvis.toml")
     parser.add_argument("--desktop", action="store_true", help="Open in a native window (pywebview)")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
@@ -114,6 +118,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "check":
         return _check(cfg)
+    if args.command == "mail-login":
+        from pathlib import Path
+
+        from .mail.gmail import login
+
+        print("Signing in to Gmail with READ-ONLY access (gmail.readonly). The token is stored in Windows Credential Manager.")
+        address = login(Path(args.client_secret) if args.client_secret else None)
+        print(f"Signed in as {address}. Restart JARVIS to start watching mail.")
+        return 0
+    if args.command == "mail-logout":
+        from .mail.gmail import logout
+
+        removed = logout(forget_client=args.forget_client)
+        print("Gmail token revoked and removed from Credential Manager." if removed else "No Gmail token was stored.")
+        return 0
     if args.command == "toolcheck":
         from .toolcheck import format_report, run_toolcheck
 

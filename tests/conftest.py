@@ -11,10 +11,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fake_ha import create_fake_ha  # noqa: E402
+from fake_mail import FakeMailProvider  # noqa: E402
 
 from jarvis.app_core import JarvisCore  # noqa: E402
 from jarvis.config import JarvisConfig  # noqa: E402
 from jarvis.providers.base import AIProvider, ProviderHealth, ProviderResponse, ToolCall, Usage  # noqa: E402
+from jarvis.rules import RulesConfig  # noqa: E402
 
 HA_TOKEN = "test-token-abcdef123456"
 
@@ -84,7 +86,7 @@ def fake_ha():
 def make_core(tmp_path, fake_ha, monkeypatch):
     created: list[JarvisCore] = []
 
-    def _make(providers: dict[str, AIProvider] | None = None, *, ha_token: bool = True, **cfg_overrides) -> JarvisCore:
+    def _make(providers: dict[str, AIProvider] | None = None, *, ha_token: bool = True, rules: RulesConfig | None = None, mail_provider: Any = None, **cfg_overrides) -> JarvisCore:
         if ha_token:
             monkeypatch.setenv("HA_TOKEN", HA_TOKEN)
         cfg = make_config(tmp_path, **cfg_overrides)
@@ -94,6 +96,12 @@ def make_core(tmp_path, fake_ha, monkeypatch):
             ha_transport=httpx.ASGITransport(app=fake_ha),
             persist=False,
             sonos_verify_delay_s=0.01,
+            # Never read the owner's real config/rules.toml from tests.
+            rules=rules if rules is not None else RulesConfig(),
+            # Never show real Windows notifications from tests.
+            notification_channels=[],
+            # Never touch Gmail or Windows Credential Manager from tests.
+            mail_provider=mail_provider if mail_provider is not None else FakeMailProvider(signed_in=False),
         )
         core.sonos._verify_timeout_s = 0.3
         created.append(core)

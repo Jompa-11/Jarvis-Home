@@ -61,6 +61,30 @@ these tools to the model; the rest of the backend is platform-neutral. It can la
 (the model picks a key; the command line comes from config; `shell=False`), list window titles, and focus
 a window. Dry-run is on by default. There is no shell, no file access, no input injection and no elevation.
 
+**F. Monitoring and notifications** — `jarvis/monitoring`. `AsyncScheduler` implements the `Scheduler`
+extension point (periodic, daily and one-off jobs; a failing job is logged and retried; `stop()` cancels all
+tasks when JARVIS shuts down). `Notifier` decides how each event is delivered from its priority
+(`low` / `normal` / `high` / `urgent`) and the owner's rules in `config/rules.toml`: quiet hours, a limit
+on interrupting notifications per hour, mute and pause; `urgent` may break through quiet hours. The same
+event is never delivered twice; only a hash of the event key and a timestamp are stored
+(`data/monitor_state.json`, retention configurable). One-time codes (4–8 digits, also written `483 920`)
+are replaced with `••••` before a notification is created, so no channel, the UI or the summary sees them.
+
+Channels implement `NotificationChannel`: the UI list (passive) and Windows notifications (interrupting)
+today; voice and phone channels plug in without changing the Notifier. **The model has no tool that
+sends notifications.** Only code calls `Notifier.notify`, with fixed templates; tools the model can use
+here (`rules_show`, `monitor_status`) are read-only and their output is `personal`.
+
+**Windows notifications** are shown by running a *fixed* PowerShell script (`_TOAST_SCRIPT` in
+`jarvis/monitoring/channels.py`, passed with `-EncodedCommand`). The notification title and text are
+**never part of the command**: they are passed only as environment variables (`JARVIS_TOAST_TITLE`,
+`JARVIS_TOAST_BODY`), and the script XML-escapes them with `[Security.SecurityElement]::Escape` before
+building the toast XML. PowerShell inserts variable values literally and does not evaluate them, so text
+from an e-mail such as `'); Remove-Item ...` or `$(calc)` is displayed as text and cannot run as code or
+inject markup. The model cannot reach this path: it has no tool that creates notifications, and the
+script, its arguments and the app id are constants. A test asserts that hostile text never appears in
+the process arguments.
+
 ## Safety model
 
 | Concern | Mechanism |
@@ -73,7 +97,8 @@ a window. Dry-run is on by default. There is no shell, no file access, no input 
 | Other websites driving the local API | Loopback bind, Host check (DNS rebinding), per-launch token in page (CSRF), WebSocket Origin check, strict CSP |
 | Secrets | Env vars / `.env` / Windows Credential Manager; never in config; every secret read is registered with the log redactor; pattern redaction for tokens/keys |
 | Sensitive data to cloud | Tool outputs have a sensitivity (`normal`/`personal`/`restricted`); above `cloud_max_sensitivity` they are replaced with a "withheld" notice for cloud providers only |
-| Retention | Conversations in memory only; logs contain no message text by default; usage file stores counts only |
+| Retention | Conversations in memory only; logs contain no message text by default; usage file stores counts only; monitoring stores hashes of notified event keys and times only |
+| Notifications | No model tool can send them; fixed templates; one-time codes masked; Windows notification text passed only as environment variables and XML-escaped by a fixed script |
 | Identity | Profiles scope permissions but are *not* authentication. Voice/face identity (future) will be a hint, never authorization |
 
 ## Extension points

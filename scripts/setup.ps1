@@ -56,6 +56,10 @@ if (-not (Test-Path 'config\jarvis.toml')) {
     Copy-Item 'config\jarvis.example.toml' 'config\jarvis.toml'
     Write-Host 'Created config\jarvis.toml (edit it to configure Home Assistant, apps, profiles).'
 }
+if (-not (Test-Path 'config\rules.toml')) {
+    Copy-Item 'config\rules.example.toml' 'config\rules.toml'
+    Write-Host 'Created config\rules.toml (your important senders, keywords, quiet hours and preferences).'
+}
 if (-not (Test-Path '.env')) {
     Copy-Item '.env.example' '.env'
     Write-Host 'Created .env (add ANTHROPIC_API_KEY and HA_TOKEN there; it is git-ignored).'

@@ -1,0 +1,59 @@
+# JARVIS rules: what matters to you, when JARVIS may speak, and how you like to be addressed.
+# Copy to config/rules.toml (git-ignored) and edit. setup.ps1 does this for you.
+# These rules decide priorities and style only. They can never override JARVIS's
+# safety rules (read-only monitoring, no actions from e-mail content, dry-run).
+
+# ------------------------------------------------------------- E-mail ----
+[mail]
+# Write senders as an address ("chef@jobb.se"), "Name <address>" or a domain ("bank.se").
+# A display name alone ("Skolan Solbacken") also works, but anyone can put any name on
+# an e-mail: a name-only match is never urgent, and notifications always show the real
+# domain, e.g. "Skatteverket (skatteverket.se)" or "Skatteverket (okänd avsändare: exempel.com)".
+#
+# Mail from these senders is always important.
+important_senders = [
+  # "chef@exempel.se",
+  # "Skatteverket",
+]
+# Mail from any address at these domains is always important.
+important_domains = [
+  "skatteverket.se",
+  "forsakringskassan.se",
+  "1177.se",
+]
+# A subject (or preview) containing any of these words is important. Case-insensitive.
+important_keywords = [
+  "faktura", "betala", "förfaller", "påminnelse", "skola", "läkare",
+  "vårdcentral", "leverans", "säkerhetskod", "verifieringskod", "invoice", "payment due",
+]
+# URGENT: above important. Urgent items may break through quiet hours (see
+# [notifications] urgent_overrides_quiet_hours) and are always clearly marked.
+# Only a matching real ADDRESS or DOMAIN gives urgent. Urgent keywords give urgent only
+# from a sender whose address/domain is in your rules; from anyone else they give important.
+urgent_senders = [
+  # "larm@mitt-larmbolag.se",
+]
+urgent_keywords = ["larm", "akut"]
+# One-time codes (4-8 digits) are always hidden as "••••" in notifications.
+# Mail from these senders or domains is skipped entirely (never announced, never classified).
+ignored_senders = [
+  # "nyhetsbrev@exempel.se",
+  # "noreply@reklam.example",
+]
+
+# ------------------------------------------------------- Notifications ----
+[notifications]
+quiet_hours_start = "22:00"      # nothing is read aloud between these times;
+quiet_hours_end = "07:00"        # everything waits for the morning summary
+max_announcements_per_hour = 4   # interrupting notifications (e.g. Windows pop-ups) per hour; the rest go to the summary
+morning_summary_time = "07:30"
+urgent_overrides_quiet_hours = true  # urgent items still notify during quiet hours
+
+# --------------------------------------------------------- Preferences ----
+# Free-text wishes about style. Added to the AI's instructions as "Owner's preferences".
+# They shape tone and length only; safety rules always win.
+[preferences]
+notes = [
+  "Tilltala mig som sir.",
+  "Var kort.",
+]
