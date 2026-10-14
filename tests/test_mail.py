@@ -427,6 +427,15 @@ async def test_gmail_without_token_raises_auth_error():
     await g.aclose()
 
 
+def test_oauth_redirect_code_is_redacted_in_logs():
+    from jarvis.logging_utils import redact
+
+    line = '"GET /?state=abc&iss=https://accounts.google.com&code=4/0AXlqoi7dWbs2iqvJhw_Q9z&scope=https://www.googleapis.com/auth/gmail.readonly HTTP/1.1" 200'
+    out = redact(line)
+    assert "4/0AXlqoi7dWbs2iqvJhw_Q9z" not in out and "code=[REDACTED]" in out
+    assert "scope=https://www.googleapis.com/auth/gmail.readonly" in out  # harmless parts stay readable
+
+
 def test_gmail_scope_is_read_only():
     from jarvis.mail import gmail
 

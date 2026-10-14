@@ -26,6 +26,8 @@ _PATTERNS = [
     re.compile(r"(?i)((?:api[_-]?key|token|password|secret|authorization)[\"']?\s*[:=]\s*[\"']?)[^\s\"',;&]+"),
     # JWT-shaped strings (Home Assistant long-lived tokens are JWTs).
     re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
+    # OAuth redirect parameters, e.g. Google's one-time "?code=4/0A..." after sign-in.
+    re.compile(r"([?&](?:code|access_token|refresh_token|id_token)=)[^&\s\"']+"),
 ]
 
 

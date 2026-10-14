@@ -120,6 +120,9 @@ def login(client_secret_file: Path | None = None, store: TokenStore | None = Non
     """Interactive sign-in in the browser. Returns the signed-in address."""
     from google_auth_oauthlib.flow import InstalledAppFlow
 
+    # The library logs the full redirect URL at INFO, including the one-time
+    # authorization code. Keep it out of the console and any log file.
+    logging.getLogger("google_auth_oauthlib").setLevel(logging.WARNING)
     store = store or TokenStore()
     if client_secret_file is not None:
         client = json.loads(Path(client_secret_file).read_text(encoding="utf-8"))
