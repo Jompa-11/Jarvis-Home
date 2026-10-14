@@ -71,6 +71,8 @@ def match_intent(text: str, available: set[str]) -> ToolCall | None:
     def ok(name: str) -> bool:
         return name in available
 
+    if re.search(r"\b(sammanfatta|sammanfattning|summari[sz]e|summary)\b", t) and ok("monitor_summary_now"):
+        return _call("monitor_summary_now")
     if ok("files_search") and (args := _file_search(text)) is not None:
         return _call("files_search", **args)
 
@@ -136,6 +138,14 @@ def _summarize(tool_name: str | None, content: str, is_error: bool) -> str:
             return f"{LABEL}\n{data.get('note') or 'No matching files.'} {data.get('scope', '')}".rstrip()
         lines = [f"- {m['name']} ({m['folder']}, {m['modified']})" for m in matches[:10]]
         return f"{LABEL}\nI found {len(matches)} file(s), newest first:\n" + "\n".join(lines) + f"\n{data.get('scope', '')}"
+    if tool_name == "monitor_summary_now" and isinstance(data, dict):
+        lines = [data.get("title") or "Summary."]
+        lines += [f"- {m}" for m in data.get("mail") or []]
+        files = data.get("files") or {}
+        if files.get("count"):
+            lines.append(f"- New files ({files['count']}): {', '.join(files.get('top', []))}")
+        lines += [f"- {w['time']} {w['title']}" for w in data.get("waited") or []]
+        return f"{LABEL}\n" + "\n".join(lines)
     if tool_name == "files_open_folder" and isinstance(data, dict):
         if payload.get("dry_run"):
             return f"{LABEL}\n{prefix}would open the folder {data.get('folder')} with {data.get('file')} highlighted."

@@ -5,7 +5,7 @@ orchestrator, hybrid AI (Claude in the cloud, Ollama locally), Home Assistant /
 Sonos control, a restricted Windows control layer, and a holographic HUD
 interface. Every indicator in the interface shows real backend state.
 
-![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-131%20passing-5fe3ff)
+![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-324%20passing-5fe3ff)
 
 ## What works today
 
@@ -19,6 +19,10 @@ interface. Every indicator in the interface shows real backend state.
 | Monthly cloud budget guard and cost estimates | ✅ |
 | Voice (wake word, speech-to-text, mic capture) | ⏳ Interfaces only (Phase 2). The mic shows **Off** because it *is* off |
 | Read replies aloud | ✅ Optional, using local Windows voices through the browser |
+| Monitoring and notifications: priorities, quiet hours, rate limit, mute/pause, Windows pop-ups | ✅ Rules in `config\rules.toml`; one-time codes shown as `••••` |
+| Gmail, read-only: important mail by your rules first, other mail classified by the **local** model only | ✅ After `python -m jarvis mail-login`; token in Windows Credential Manager |
+| File search and folder watching (Hämtade filer, Dokument): metadata only, never file contents | ✅ "hitta min senaste faktura", "öppna mappen där den ligger" (dry-run by default) |
+| Summary: important mail, new files and what waited, every morning or on demand ("Sammanfatta nu") | ✅ Shown in the notification panel until acknowledged |
 | Camera / gestures / identity / calendars / memory | ⏳ Interfaces only |
 
 ## Quick start (Windows 11)
@@ -68,10 +72,20 @@ Optional local model: install [Ollama](https://ollama.com) and run `ollama pull 
 
 Home Assistant and Sonos setup: see [docs/HOME_ASSISTANT_SETUP.md](docs/HOME_ASSISTANT_SETUP.md).
 
+* `config\rules.toml` (git-ignored, copied from `config\rules.example.toml`) holds what is important to
+  you: senders, domains and words for mail, words in new file names (`[files] important_keywords`),
+  quiet hours, the morning summary time and style preferences. Rules set priorities only, never permissions.
+* `[files]` in `config\jarvis.toml` chooses the watched folders. The default is your Downloads and Documents
+  folders (found through Windows Known Folders). JARVIS indexes only name, path, type, size and modified
+  time into `data\files.db` every 15 minutes and never opens a file. Secret-looking files (`.env`, keys,
+  certificates, password databases, VPN profiles), `.ssh`/`.git`/`node_modules`/`AppData`, hidden and
+  system files, and links/junctions are skipped.
+
 ## Using it
 
 Try “list speakers”, “set the kitchen to 30 percent”, “pause the living room”, “play Morning Jazz in the kitchen”,
-“announce dinner is ready in the kitchen”, “open notepad”, “vad är klockan?”.
+“announce dinner is ready in the kitchen”, “open notepad”, “vad är klockan?”, “hitta min senaste faktura”,
+“öppna mappen där den ligger”, “har jag fått några viktiga mejl?”, “sammanfatta dagen”.
 
 * **Tool activity** (right) lists every action with its real result. A “verified” mark means JARVIS re-read
   the device and confirmed the effect.
@@ -79,6 +93,8 @@ Try “list speakers”, “set the kitchen to 30 percent”, “pause the livin
   60%. Nothing runs until you click Approve; requests expire after 2 minutes.
 * **Dry-run** is on by default for both computer control and speakers: actions are described, not performed.
   Turn it off per area in Settings (or `config\jarvis.toml`) once you are satisfied.
+* **Notiser** (notification panel): pause, mute for an hour, acknowledge, and **Sammanfatta nu** for a summary
+  of important mail, new files and what waited. The latest summary stays at the top until you acknowledge it.
 * **Settings** (gear): dry-run toggles, local-only mode, what cloud AI may receive, microphone/camera master
   switches, household profile, read-aloud.
 
@@ -86,7 +102,7 @@ Try “list speakers”, “set the kitchen to 30 percent”, “pause the livin
 
 ```bash
 pip install --require-hashes -r requirements-dev.lock
-python -m pytest            # 131 tests; no network, no hardware, no credentials needed
+python -m pytest            # 324 tests; no network, no hardware, no credentials needed
 python tests/fake_ha.py     # fake Home Assistant on :8123 (token "demo-token") for UI testing
 ```
 

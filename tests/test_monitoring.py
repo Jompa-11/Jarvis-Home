@@ -330,12 +330,16 @@ async def test_morning_summary_collects_what_waited():
     await m.notifier.notify(source="files", title="Ny fil: kvitto.pdf", priority="low")
     clock.now = datetime(2026, 10, 14, 7, 30)
     summary = await m.morning_summary()
-    assert summary.title == "Morgonsammanfattning: 2 saker, varav 1 viktiga."
+    assert summary.title == "Morgonsammanfattning: 2 saker som väntat."
     assert "Faktura från Telia" in summary.detail and "kvitto.pdf" in summary.detail
-    assert summary.delivery == "passive" and not summary.acknowledged  # shown until acknowledged
+    assert summary.priority == "high" and not summary.acknowledged  # shown until acknowledged
     assert m.notifier.summary == [] and len(m.last_summary["items"]) == 2
+    assert m.snapshot()["summary"]["acknowledged"] is False
+    m.notifier.acknowledge(summary.id)
+    assert m.snapshot()["summary"]["acknowledged"] is True
+    clock.now = datetime(2026, 10, 14, 7, 31)
     empty = await m.morning_summary()
-    assert empty is None or empty.title.startswith("Morgonsammanfattning: inget nytt")
+    assert empty.title == "Morgonsammanfattning: inget nytt sedan sist."
 
 
 def test_sources_are_reported_truthfully():

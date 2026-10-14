@@ -282,6 +282,34 @@
       list.appendChild(li);
     }
     $("notify-empty").hidden = (m.recent || []).length > 0;
+    renderSummary(m.summary);
+  }
+
+  // The latest summary stays visible until it is acknowledged.
+  function renderSummary(s) {
+    const card = $("summary-card");
+    card.replaceChildren();
+    if (!s || s.acknowledged) { card.hidden = true; return; }
+    card.hidden = false;
+    const head = el("div", "summary-head");
+    head.appendChild(el("strong", null, s.title));
+    head.appendChild(el("span", null, fmtTime(s.created_at)));
+    card.appendChild(head);
+    const section = (label, lines) => {
+      if (!lines.length) return;
+      card.appendChild(el("div", "summary-label", label));
+      const ul = el("ul", "summary-list");
+      for (const line of lines) ul.appendChild(el("li", null, line));
+      card.appendChild(ul);
+    };
+    section("Viktiga mejl", s.mail || []);
+    const files = s.files || { count: 0, top: [] };
+    if (files.count) section(`Nya filer (${files.count})`, files.top || []);
+    section("Det som väntat", (s.waited || []).map((w) => `${w.time} ${w.title}`));
+    const ack = el("button", "btn", "Kvittera");
+    ack.type = "button";
+    ack.addEventListener("click", () => api("/api/notifications/ack", { method: "POST", body: JSON.stringify({ id: s.notification_id }) }).catch((e) => toast(e.message, "err")));
+    if (s.notification_id) card.appendChild(ack);
   }
 
   $("btn-mon-pause").addEventListener("click", () => {
@@ -293,6 +321,14 @@
     api("/api/notifications/mute", { method: "POST", body: JSON.stringify({ minutes: muted ? 0 : 60 }) }).then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } }).catch((e) => toast(e.message, "err"));
   });
   $("btn-mon-ack").addEventListener("click", () => api("/api/notifications/ack", { method: "POST", body: JSON.stringify({}) }).catch((e) => toast(e.message, "err")));
+  $("btn-mon-summary").addEventListener("click", () => {
+    const b = $("btn-mon-summary");
+    b.disabled = true;
+    api("/api/monitoring/summary", { method: "POST", body: JSON.stringify({}) })
+      .then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } })
+      .catch((e) => toast(e.message, "err"))
+      .finally(() => { b.disabled = false; });
+  });
 
   function renderAll() {
     const s = ui.state;

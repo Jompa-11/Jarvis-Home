@@ -74,6 +74,16 @@ class MailWatcher:
     def _publish_state(self) -> None:
         self.monitor.set_source("mail", *self.state())
 
+    def important_since(self, since: float | None) -> list[str]:
+        """One sentence per important mail received since ``since`` (default: the last 24 h)."""
+        cutoff = since if since is not None else self.clock() - 86400
+        out = []
+        for m in self.recent:
+            if m["priority"] in ("high", "urgent") and m["ts"] >= cutoff:
+                what = (m["summary"] or m["subject"] or "(inget ämne)").rstrip(" .")
+                out.append(f"{'AKUT: ' if m['priority'] == 'urgent' else ''}{m['from']}: {what}.")
+        return out
+
     async def poll(self) -> int:
         """One check. Returns how many new messages were handled."""
         if self.monitor.paused:
@@ -123,6 +133,7 @@ class MailWatcher:
                     "summary": c.summary,
                     "reason": c.reason,
                     "classified_by": c.by,
+                    "ts": msg.received_at,
                 }
             )
         self.last_poll = now
@@ -138,7 +149,7 @@ def register_mail_tools(registry: "ToolRegistry", watcher: MailWatcher) -> None:
         if state == "needs_login":
             return ToolResult(ok=False, error="Gmail is not signed in yet (python -m jarvis mail-login).")
         limit = int(args.get("limit", 10))
-        items = list(watcher.recent)[::-1]
+        items = [{k: v for k, v in i.items() if k != "ts"} for i in watcher.recent][::-1]
         if args.get("important_only", False):
             items = [i for i in items if i["priority"] in ("high", "urgent")]
         return ToolResult(

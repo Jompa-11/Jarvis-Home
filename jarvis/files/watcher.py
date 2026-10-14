@@ -149,6 +149,13 @@ class FileWatcher:
             self.new_since_summary.append({"name": r.name, "where": _where(r), "mtime": r.mtime, "important": bool(rules.match(r.name))})
         return len(new)
 
+    def take_new(self, since: float | None = None) -> dict[str, Any]:
+        """New files since the last summary: the count and the 5 most important names
+        (rule matches first, then newest). Starts a new batch."""
+        items, self.new_since_summary = list(self.new_since_summary), deque(maxlen=self.new_since_summary.maxlen)
+        top = sorted(items, key=lambda i: (not i["important"], -i["mtime"]))[:5]
+        return {"count": len(items), "important": sum(i["important"] for i in items), "top": [i["name"] for i in top]}
+
     # -- tools -----------------------------------------------------------------
     def search(self, query: str = "", file_type: str | None = None, period: str = "any", now: float | None = None) -> dict[str, Any]:
         now = time.time() if now is None else now

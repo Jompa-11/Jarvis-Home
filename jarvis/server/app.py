@@ -203,6 +203,11 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
         core.monitor.mute(body.minutes)
         return core.monitor.snapshot()
 
+    @app.post("/api/monitoring/summary")
+    async def monitoring_summary() -> dict[str, Any]:
+        await core.monitor.summary_now()  # "Sammanfatta nu"
+        return core.monitor.snapshot()
+
     @app.post("/api/notifications/ack")
     async def notifications_ack(body: AckIn) -> dict[str, Any]:
         count = core.monitor.notifier.acknowledge(body.id)

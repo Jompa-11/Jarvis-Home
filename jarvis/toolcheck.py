@@ -37,6 +37,8 @@ CASES: list[Case] = [
     Case("Visa systemstatus", frozenset({"system_get_status"})),
     Case("Which speakers do you have?", frozenset({"sonos_list_speakers"})),
     Case("Pausa musiken i köket", frozenset({"sonos_playback"})),
+    Case("Hitta min senaste faktura", frozenset({"files_search"})),
+    Case("Sammanfatta dagen", frozenset({"monitor_summary_now"})),
     Case("Berätta ett kort skämt", frozenset()),
 ]
 

@@ -102,12 +102,14 @@ class JarvisCore:
             # never the router, so routes or cloud providers can never be used for mail.
             self.mail = MailWatcher(cfg.mail, provider, self.monitor, lambda: self.rules, lambda: self.router.providers.get("ollama"))
             register_mail_tools(self.registry, self.mail)
+            self.monitor.add_digest("mail", self.mail.important_since)
         self.files: FileWatcher | None = None
         if cfg.files.enabled:
             # Metadata-only index of the watched folders (data/files.db); contents are never read.
             self.files = FileWatcher(cfg.files, self.monitor, lambda: self.rules, data / "files.db" if data else None)
             # Opening Explorer is desktop control: only where computer control is enabled.
             register_file_tools(self.registry, self.files, allow_open=self.windows.enabled)
+            self.monitor.add_digest("files", self.files.take_new)
         register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
         if self.windows.enabled:
             # Desktop control is platform-specific; a headless backend (e.g. a
