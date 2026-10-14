@@ -201,8 +201,10 @@ async def test_codes_never_reach_channels_ui_or_summary(tmp_path):
     assert r.title == "Säkerhetskod från BankID: ••••" and r.detail == "Koden •••• gäller i 5 minuter"
     for sent in (*ui.sent, *popup.sent):
         assert "483" not in sent.title and "112233" not in (sent.detail or "")
-    assert "483" not in str(events) and "112233" not in str(events)
-    assert "483" not in str(n.list_recent()) and "112233" not in str(n.status())
+    # Only the text fields: a random hex id could contain "483" by chance.
+    texts = [f"{e['title']} {e['detail']}" for e in (*events, *n.list_recent())]
+    assert all("483" not in t and "112233" not in t for t in texts)
+    assert "112233" not in str(n.status())
     low = await n.notify(source="mail", title="Kod 9876", priority="low")
     assert n.summary[-1].title == "Kod ••••" and low.title == "Kod ••••"
 

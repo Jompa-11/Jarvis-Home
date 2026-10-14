@@ -132,6 +132,17 @@ watcher still notifies rule matches (no model needed) but keeps other mail in me
 local model; it is classified when game mode ends. `python -m jarvis toolcheck` uses the same check and
 refuses to run during a game.
 
+**Desktop app** — `jarvis/desktop`. `pythonw -m jarvis --background` is a small supervisor process: it holds
+an OS file lock (`data/jarvis.lock`; a second start finds it taken, asks the running app over a loopback
+socket with a random secret to show its window, and exits), owns the pywebview window (maximized on the
+primary monitor found with `EnumDisplayMonitors`; X only hides it) and the pystray icon, and runs the
+server as a child process (`--serve-child`). The child gets the session token in its environment (removed
+at once) and stops cleanly when the supervisor closes its stdin. If the child stops unasked it is restarted
+with backoff, at most 5 times per hour, then a Windows notification. The process and the shortcuts made by
+`scripts/autostart.ps1` share the AppUserModelID `JarvisHome.JARVIS`, so the pinned icon and the window are
+one taskbar button. Ollama that is still starting after login is retried every 5 s for 5 minutes ("Ollama
+startar…" in the UI).
+
 ## Safety model
 
 | Concern | Mechanism |

@@ -49,19 +49,27 @@ regenerate the lock with the command at the top of the lock file (needs `uv`), a
 
 ## Status (2026-10-14)
 
-- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 340 tests pass; Ollama `qwen2.5:7b` runs 100% on
+- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 356 tests pass; Ollama `qwen2.5:7b` runs 100% on
   GPU with `num_ctx` 8192.
-- Merged: monitoring + rules (PR #8), Gmail read-only monitoring is signed in and active.
-- PR #9 (draft, not merged): file search + folder watching (Hämtade filer/Dokument via Known Folders), morning
-  summary + "Sammanfatta nu", per-request tool selection, owner-only personal tools, game mode
-  (`cs2.exe` or GPU > 85 % for 2 min: no background Ollama calls, model unloaded).
+- Merged: monitoring + rules (PR #8, Gmail read-only signed in and active); PR #9: file search + folder
+  watching (Hämtade filer/Dokument via Known Folders), morning summary + "Sammanfatta nu", per-request tool
+  selection, owner-only personal tools, game mode (`cs2.exe` or GPU > 85 % for 2 min: no background
+  Ollama calls, model unloaded).
+- Draft, not merged: Discord phone notifications (PR #10, `claude/jarvis-discord-notify`).
+- Branch `claude/jarvis-autostart` (draft PR): desktop app `pythonw -m jarvis --background` (pywebview window
+  maximized on the primary monitor, X hides, pystray icon, single instance, supervised server child with
+  max 5 restarts/h), `scripts/autostart.ps1 -Install/-Uninstall/-Status` (Startup + Start-menu shortcuts with
+  AppUserModelID `JarvisHome.JARVIS`), icon `assets/jarvis.ico` (`scripts/make_icon.py`). The owner explicitly
+  asked for autostart and a pinned app; keep it user level (no admin, service, HKLM, firewall).
+- Lock files: `proxy-tools` (a pywebview dependency, sdist only) is the one package allowed from source
+  (`--no-binary proxy-tools`, hash-pinned); everything else is wheels only.
 - `toolcheck` (qwen2.5:7b, 3 runs each): step 4 alone 6–7/8 (more tools made qwen skip `computer_list_apps`
   and answer the time from context); with tool selection 8/8 ×3; with step 5 (10 cases) 10, 10, 9/10;
   final run 10/10. Small models are sensitive to the number of tools: measure with `toolcheck` after adding
   tools. `toolcheck` refuses to run during game mode (results would be GPU timeouts).
 - Voice (PR #6, #7) is paused as drafts; monitoring must not depend on it.
 - Not configured yet: Claude API key (owner must set a spend limit in the Anthropic Console first),
-  Home Assistant + Sonos (planned on the Raspberry Pi), phone notifications (Discord webhook, own branch later).
+  Home Assistant + Sonos (planned on the Raspberry Pi).
 
 ## Git workflow
 

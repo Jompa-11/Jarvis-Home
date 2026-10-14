@@ -5,7 +5,7 @@ orchestrator, hybrid AI (Claude in the cloud, Ollama locally), Home Assistant /
 Sonos control, a restricted Windows control layer, and a holographic HUD
 interface. Every indicator in the interface shows real backend state.
 
-![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-340%20passing-5fe3ff)
+![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-356%20passing-5fe3ff)
 
 ## What works today
 
@@ -24,6 +24,7 @@ interface. Every indicator in the interface shows real backend state.
 | File search and folder watching (Hämtade filer, Dokument): metadata only, never file contents | ✅ "hitta min senaste faktura", "öppna mappen där den ligger" (dry-run by default) |
 | Summary: important mail, new files and what waited, every morning or on demand ("Sammanfatta nu") | ✅ Shown in the notification panel until acknowledged |
 | Game mode: no background AI calls on the GPU while you play (e.g. `cs2.exe`, or GPU > 85 % for 2 min) | ✅ Mail that needs the model waits; rule matches still notify. "Spelläge: på" in the panel |
+| Desktop app: own window on the main monitor, icon by the clock, one instance, auto-restart, autostart, pinned taskbar icon | ✅ `.\scripts\autostart.ps1 -Install`; see below |
 | Camera / gestures / identity / calendars / memory | ⏳ Interfaces only |
 
 ## Quick start (Windows 11)
@@ -44,8 +45,8 @@ After setup you can also double-click `start-jarvis.bat`.
 Other commands:
 
 ```powershell
-.\scripts\setup.ps1 -Desktop        # also install pywebview, then:
-.\scripts\start.ps1 -Desktop        # native window (Edge WebView2) instead of a browser tab
+.\scripts\start.ps1 -Desktop        # the desktop app (own window, icon by the clock) instead of a browser tab
+.\scripts\autostart.ps1 -Install    # start JARVIS at login and add it to the Start menu (see below)
 .\.venv\Scripts\python -m jarvis check      # validate config, show what's connected
 .\.venv\Scripts\python -m jarvis diagnose   # hardware, mics, cameras, tools, credentials present (never values)
 .\scripts\inspect_environment.ps1          # same idea, no Python needed
@@ -87,6 +88,29 @@ Home Assistant and Sonos setup: see [docs/HOME_ASSISTANT_SETUP.md](docs/HOME_ASS
 * Mail, files, notifications, the summary and your rules are **owner only**: other profiles are neither
   offered those tools nor shown notifications.
 
+## Desktop app, autostart and the taskbar
+
+JARVIS can run as a normal Windows app: its own window (Edge WebView2), an icon by the clock, and a
+pinned taskbar button. Everything is user level: two shortcuts in your own folders, no admin rights,
+no service, no scheduled task, no registry or firewall changes.
+
+```powershell
+.\scripts\autostart.ps1 -Install     # start at login + "JARVIS" in the Start menu
+.\scripts\autostart.ps1 -Status      # are the shortcuts there?
+.\scripts\autostart.ps1 -Uninstall   # remove both
+```
+
+* **Pin it:** Start → search **JARVIS** → right-click → **Fäst i aktivitetsfältet** (Pin to taskbar). The pinned
+  icon and the open window are one button (same AppUserModelID, `JarvisHome.JARVIS`).
+* **At login** the window opens maximized on your main monitor after ~10 s. If a game from `[gaming]` is
+  running, JARVIS starts with the icon only, so it never steals focus from the game.
+* **X hides** the window; JARVIS keeps running. Open it again from the pinned icon, the Start menu or the
+  icon by the clock (double-click or **Öppna JARVIS**). Starting JARVIS again never starts a second copy.
+* **Icon by the clock:** Öppna JARVIS, Pausa/återuppta bevakning, **Avsluta JARVIS** (stops everything).
+* **Self-healing:** if the server crashes it is restarted (at most 5 times an hour); after that you get a
+  Windows notification "JARVIS har stannat". Logs: `data\logs\jarvis.log` (server) and `data\logs\desktop.log`.
+* Without autostart: `.\scripts\start.ps1 -Desktop` (with a console) or the browser version `.\scripts\start.ps1`.
+
 ## Using it
 
 Try “list speakers”, “set the kitchen to 30 percent”, “pause the living room”, “play Morning Jazz in the kitchen”,
@@ -108,7 +132,7 @@ Try “list speakers”, “set the kitchen to 30 percent”, “pause the livin
 
 ```bash
 pip install --require-hashes -r requirements-dev.lock
-python -m pytest            # 340 tests; no network, no hardware, no credentials needed
+python -m pytest            # 356 tests; no network, no hardware, no credentials needed
 python tests/fake_ha.py     # fake Home Assistant on :8123 (token "demo-token") for UI testing
 ```
 
