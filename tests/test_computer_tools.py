@@ -261,3 +261,21 @@ async def test_tools_are_grouped_so_the_model_sees_a_few_at_a_time(make_core):
         names = {t.name for t in selected}
         assert expected in names, (text, sorted(names))
         assert len(selected) <= 22, (text, len(selected))
+
+
+@pytest.mark.skipif(not __import__("sys").platform.startswith("win"), reason="Windows handles")
+def test_windows_handles_are_typed_not_32_bit_ints():
+    """A HANDLE returned as ctypes' default c_int is truncated on 64-bit Windows and
+    crashes the process when dereferenced. This caught a real segfault in clipboard read."""
+    import ctypes
+    from ctypes import wintypes
+
+    from jarvis.computer.winapi_desktop import _clipboard_api, _window_api
+
+    user32, kernel32 = _clipboard_api()
+    assert user32.GetClipboardData.restype is wintypes.HANDLE
+    assert user32.SetClipboardData.restype is wintypes.HANDLE
+    assert kernel32.GlobalAlloc.restype is wintypes.HGLOBAL
+    assert kernel32.GlobalLock.restype is wintypes.LPVOID
+    assert _window_api().GetForegroundWindow.restype is wintypes.HWND
+    assert ctypes.sizeof(wintypes.HANDLE) == ctypes.sizeof(ctypes.c_void_p)

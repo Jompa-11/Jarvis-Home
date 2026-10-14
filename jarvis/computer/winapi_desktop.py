@@ -65,6 +65,42 @@ def _char_input(ch: str, up: bool) -> _INPUT:
     return _INPUT(type=INPUT_KEYBOARD, ki=_KEYBDINPUT(wVk=0, wScan=ord(ch), dwFlags=flags, time=0, dwExtraInfo=None))
 
 
+def _clipboard_api():  # pragma: no cover - Windows only
+    """user32 and kernel32 with correct 64-bit handle types.
+
+    Without these, ctypes defaults every return value to a 32-bit int, which
+    truncates a real HANDLE and makes the process crash when it is dereferenced.
+    """
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.GetClipboardData.argtypes = [wintypes.UINT]
+    user32.GetClipboardData.restype = wintypes.HANDLE
+    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    user32.SetClipboardData.restype = wintypes.HANDLE
+    user32.EmptyClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.restype = wintypes.BOOL
+    kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalLock.restype = wintypes.LPVOID
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalFree.restype = wintypes.HGLOBAL
+    return user32, kernel32
+
+
+def _window_api():  # pragma: no cover - Windows only
+    """user32 with window handles typed as handles, not as 32-bit ints."""
+    user32 = ctypes.windll.user32
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    return user32
+
+
 def _vcall(ptr: ctypes.c_void_p, index: int, restype, *argtypes):  # pragma: no cover - COM plumbing
     vtable = ctypes.cast(ptr, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
     return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)(vtable[index])
@@ -153,42 +189,50 @@ class WindowsDesktopAPI:
 
     # -- clipboard -----------------------------------------------------------
     def get_clipboard(self) -> str:  # pragma: no cover - real clipboard
-        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        user32, kernel32 = _clipboard_api()
         if not user32.OpenClipboard(None):
             raise OSError("Kunde inte öppna urklipp.")
         try:
             handle = user32.GetClipboardData(CF_UNICODETEXT)
             if not handle:
                 return ""
-            kernel32.GlobalLock.restype = ctypes.c_void_p
             ptr = kernel32.GlobalLock(handle)
+            if not ptr:
+                return ""
             try:
-                return ctypes.c_wchar_p(ptr).value or ""
+                return ctypes.wstring_at(ptr)
             finally:
                 kernel32.GlobalUnlock(handle)
         finally:
             user32.CloseClipboard()
 
     def set_clipboard(self, text: str) -> None:  # pragma: no cover - real clipboard
-        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        user32, kernel32 = _clipboard_api()
+        buffer = ctypes.create_unicode_buffer(text)
+        size = ctypes.sizeof(buffer)
+        handle = kernel32.GlobalAlloc(0x0042, size)  # GMEM_MOVEABLE | GMEM_ZEROINIT
+        if not handle:
+            raise OSError("Slut på minne för urklipp.")
+        ptr = kernel32.GlobalLock(handle)
+        if not ptr:
+            kernel32.GlobalFree(handle)
+            raise OSError("Kunde inte låsa minnet för urklipp.")
+        ctypes.memmove(ptr, buffer, size)
+        kernel32.GlobalUnlock(handle)
         if not user32.OpenClipboard(None):
+            kernel32.GlobalFree(handle)
             raise OSError("Kunde inte öppna urklipp.")
         try:
             user32.EmptyClipboard()
-            size = (len(text) + 1) * ctypes.sizeof(ctypes.c_wchar)
-            kernel32.GlobalAlloc.restype = ctypes.c_void_p
-            handle = kernel32.GlobalAlloc(0x0042, size)  # GMEM_MOVEABLE | GMEM_ZEROINIT
-            kernel32.GlobalLock.restype = ctypes.c_void_p
-            ptr = kernel32.GlobalLock(handle)
-            ctypes.memmove(ptr, ctypes.create_unicode_buffer(text), size)
-            kernel32.GlobalUnlock(handle)
-            user32.SetClipboardData(CF_UNICODETEXT, ctypes.c_void_p(handle))
+            if not user32.SetClipboardData(CF_UNICODETEXT, handle):
+                kernel32.GlobalFree(handle)  # ownership stays with us when it fails
+                raise OSError("Kunde inte skriva till urklipp.")
         finally:
             user32.CloseClipboard()
 
     # -- windows -------------------------------------------------------------
     def window_action(self, hwnd: int, action: str) -> None:  # pragma: no cover - real windows
-        user32 = ctypes.windll.user32
+        user32 = _window_api()
         if action == "close":
             user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
         elif action == "minimize":
@@ -199,7 +243,7 @@ class WindowsDesktopAPI:
             user32.ShowWindow(hwnd, SW_RESTORE)
 
     def active_window_title(self) -> str | None:  # pragma: no cover - real windows
-        user32 = ctypes.windll.user32
+        user32 = _window_api()
         hwnd = user32.GetForegroundWindow()
         if not hwnd:
             return None
