@@ -29,6 +29,7 @@ from .providers.dev_provider import DevProvider
 from .providers.ollama_provider import OllamaProvider
 from .providers.router import ProviderRouter
 from .providers.usage import UsageTracker
+from .files.watcher import FileWatcher, register_file_tools
 from .mail.base import MailProvider
 from .mail.gmail import GmailProvider
 from .mail.watcher import MailWatcher, register_mail_tools
@@ -101,6 +102,12 @@ class JarvisCore:
             # never the router, so routes or cloud providers can never be used for mail.
             self.mail = MailWatcher(cfg.mail, provider, self.monitor, lambda: self.rules, lambda: self.router.providers.get("ollama"))
             register_mail_tools(self.registry, self.mail)
+        self.files: FileWatcher | None = None
+        if cfg.files.enabled:
+            # Metadata-only index of the watched folders (data/files.db); contents are never read.
+            self.files = FileWatcher(cfg.files, self.monitor, lambda: self.rules, data / "files.db" if data else None)
+            # Opening Explorer is desktop control: only where computer control is enabled.
+            register_file_tools(self.registry, self.files, allow_open=self.windows.enabled)
         register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
         if self.windows.enabled:
             # Desktop control is platform-specific; a headless backend (e.g. a
@@ -145,6 +152,9 @@ class JarvisCore:
                 self.mail._publish_state()
                 if self.mail.provider.signed_in():
                     self.monitor.scheduler.every("mail", self.cfg.mail.poll_minutes * 60, self.mail.poll, run_now=True)
+            if self.files is not None:
+                # Runs as a background job; the scan itself is in a worker thread.
+                self.monitor.scheduler.every("files", self.cfg.files.refresh_minutes * 60, self.files.refresh, run_now=True)
         log.info("JARVIS core started")
 
     async def stop(self) -> None:
@@ -152,6 +162,8 @@ class JarvisCore:
         await self.monitor.stop()
         if self.mail is not None:
             await self.mail.provider.aclose()
+        if self.files is not None:
+            self.files.index.close()
         for task in (self._bg, self._state_watch):
             if task:
                 task.cancel()

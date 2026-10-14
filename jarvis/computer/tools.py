@@ -42,7 +42,7 @@ def register_computer_tools(registry: ToolRegistry, wc: WindowsControl) -> None:
             name="computer_list_apps",
             description=(
                 "List the applications JARVIS is allowed to open. Call this whenever the user asks which "
-                "programs or apps you can start; never answer that question from memory."
+                "programs or apps you can start ('vilka program får du starta?'); never answer that question from memory."
             ),
             parameters=schema({}),
             handler=list_apps,

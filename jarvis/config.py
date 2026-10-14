@@ -253,6 +253,18 @@ class MailConfig(BaseModel):
     recent_limit: int = Field(50, ge=5, le=500)
 
 
+class FilesConfig(BaseModel):
+    """Watched folders: a metadata-only index (name, path, type, size, time). Contents are never read."""
+
+    enabled: bool = True
+    # "known:Downloads" / "known:Documents" are resolved through Windows Known Folders
+    # (so a moved Downloads folder still works); anything else is a folder path.
+    watched_folders: list[str] = Field(default_factory=lambda: ["known:Downloads", "known:Documents"], max_length=20)
+    max_depth: int = Field(8, ge=0, le=32)  # folder levels below each watched folder
+    max_files: int = Field(50_000, ge=100, le=500_000)
+    refresh_minutes: float = Field(15, ge=1, le=1440)
+
+
 class RetentionConfig(BaseModel):
     max_conversation_messages: int = Field(60, ge=4, le=1000)
     tool_history_size: int = Field(200, ge=10, le=5000)
@@ -287,6 +299,7 @@ class JarvisConfig(BaseModel):
     privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     mail: MailConfig = Field(default_factory=MailConfig)
+    files: FilesConfig = Field(default_factory=FilesConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     profiles: list[ProfileConfig] = Field(

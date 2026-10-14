@@ -50,7 +50,7 @@ class MonitorService:
         self.scheduler = AsyncScheduler(clock=clock, on_reminder=self._reminder)
         self.sources: dict[str, dict[str, Any]] = {
             "mail": {"state": "not_configured", "detail": "Gmail is added in step 3."},
-            "folders": {"state": "not_configured", "detail": "Folder watching is added in step 4."},
+            "folders": {"state": "not_configured", "detail": "Folder watching is off (config [files] enabled)."},
         }
         self.last_summary: dict[str, Any] | None = None
 

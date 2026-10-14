@@ -63,6 +63,8 @@ def make_config(tmp_path: Path, **overrides: Any) -> JarvisConfig:
         # Tests exercise real (fake-HA) calls; dry-run behaviour is tested explicitly.
         "homeassistant": {"url": "http://ha.test", "timeout_s": 2, "dry_run": False},
         "computer": {"enabled": True},
+        # Never index the owner's real Downloads/Documents from tests.
+        "files": {"watched_folders": [str(tmp_path / "watched")]},
         "profiles": [
             {"id": "owner", "name": "Alex", "role": "owner"},
             {"id": "kid", "name": "Sam", "role": "child"},

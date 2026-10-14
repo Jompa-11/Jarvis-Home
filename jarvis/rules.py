@@ -63,6 +63,20 @@ class MailRules(BaseModel):
         return _clean_list([d.lower().lstrip("@") for d in v])
 
 
+class FileRules(BaseModel):
+    # A new file whose NAME contains any of these words gives a high-priority notification.
+    important_keywords: list[str] = Field(default_factory=list, max_length=500)
+
+    @field_validator("important_keywords")
+    @classmethod
+    def _dedupe(cls, v: list[str]) -> list[str]:
+        return _clean_list(v)
+
+    def match(self, filename: str) -> str | None:
+        low = filename.lower()
+        return next((k for k in self.important_keywords if k.lower() in low), None)
+
+
 class NotificationRules(BaseModel):
     quiet_hours_start: str = "22:00"
     quiet_hours_end: str = "07:00"
@@ -105,6 +119,7 @@ class Preferences(BaseModel):
 
 class RulesConfig(BaseModel):
     mail: MailRules = Field(default_factory=MailRules)
+    files: FileRules = Field(default_factory=FileRules)
     notifications: NotificationRules = Field(default_factory=NotificationRules)
     preferences: Preferences = Field(default_factory=Preferences)
 
@@ -112,6 +127,7 @@ class RulesConfig(BaseModel):
         n = self.notifications
         return {
             "mail": self.mail.model_dump(),
+            "files": self.files.model_dump(),
             "quiet_hours": f"{n.quiet_hours_start}-{n.quiet_hours_end}",
             "max_announcements_per_hour": n.max_announcements_per_hour,
             "morning_summary_time": n.morning_summary_time,
@@ -161,6 +177,7 @@ def register_rules_tools(registry: "ToolRegistry", get_rules) -> None:
         ToolSpec(
             "rules_show",
             "Show the owner's rules: important senders, domains and keywords for e-mail, ignored senders, "
+            "important words in new file names, "
             "quiet hours, announcement limit, morning summary time and style preferences. Use for questions "
             "like 'which rules do you have?' / 'vilka regler har du?'.",
             schema({}),

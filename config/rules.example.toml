@@ -41,6 +41,13 @@ ignored_senders = [
   # "noreply@reklam.example",
 ]
 
+# -------------------------------------------------------------- Files ----
+[files]
+# A NEW file in a watched folder (config/jarvis.toml [files]) whose name contains
+# any of these words gives an important notification. Other new files wait for
+# the morning summary. Only file names are used, never contents. Case-insensitive.
+important_keywords = ["faktura", "kvitto", "avtal", "kontrakt", "invoice", "receipt"]
+
 # ------------------------------------------------------- Notifications ----
 [notifications]
 quiet_hours_start = "22:00"      # nothing is read aloud between these times;
