@@ -37,7 +37,10 @@ BLOCKED_COMBOS = {
     frozenset({"win", "x"}): "snabbmenyn med PowerShell",
 }
 # A window that takes typed text as commands. Typing or pressing Enter there is HIGH risk.
-CONSOLE_CLASSES = {"consolewindowclass", "cascadia_hosting_window_class", "virtualconsoleclass", "pseudoconsolewindowclass"}
+# Verified on Windows 11: a PowerShell console window reports "PseudoConsoleWindow".
+# The older names are kept for classic consoles and Windows Terminal.
+CONSOLE_CLASSES = {"pseudoconsolewindow", "consolewindowclass", "cascadia_hosting_window_class",
+                   "virtualconsoleclass", "pseudoconsolewindowclass"}
 CONSOLE_PROCESSES = {"powershell.exe", "pwsh.exe", "cmd.exe", "windowsterminal.exe", "wt.exe", "openconsole.exe",
                      "conhost.exe", "bash.exe", "wsl.exe", "python.exe", "py.exe", "powershell_ise.exe"}
 RUN_DIALOG_TITLES = {"kör", "run"}

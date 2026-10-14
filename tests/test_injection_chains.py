@@ -170,3 +170,12 @@ def test_typing_risk_depends_on_the_window_in_front(kind, dangerous):
     assert (typing_risk(d, {"text": "x"}) is Risk.HIGH) is dangerous
     assert (keys_risk(d, {"keys": "enter"}) is Risk.HIGH) is dangerous
     assert keys_risk(d, {"keys": "ctrl+s"}) is Risk.MEDIUM  # only Enter runs what is typed
+
+
+@pytest.mark.parametrize("cls", ["PseudoConsoleWindow", "ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS"])
+def test_real_console_window_classes_are_covered(cls):
+    """'PseudoConsoleWindow' is what a PowerShell window really reports on Windows 11;
+    it was found by reading a live console window, not guessed."""
+    from jarvis.computer.desktop import CONSOLE_CLASSES
+
+    assert cls.lower() in CONSOLE_CLASSES
