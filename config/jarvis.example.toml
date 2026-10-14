@@ -137,6 +137,17 @@ max_depth = 8
 max_files = 50000
 refresh_minutes = 15
 
+# ------------------------------------------------------------ Gaming ----
+# Game mode: while one of these programs runs, or the GPU stays above the
+# threshold, JARVIS makes no background calls to the local model and unloads
+# it from the GPU. Mail that needs the model waits until the game closes;
+# mail matching your rules is still notified at once. Local and free.
+[gaming]
+enabled = true
+process_names = ["cs2.exe"]      # add more, e.g. "valorant.exe", "eldenring.exe"
+gpu_threshold_percent = 85       # 100 = only the process list
+gpu_high_minutes = 2
+
 # ------------------------------------------------------------ Privacy ----
 [privacy]
 local_only = false

@@ -266,8 +266,9 @@
       renderSummary(null);
       return;
     }
-    st.textContent = m.paused ? "Bevakning: pausad" : m.muted ? "Bevakning: aktiv (tystad)" : "Bevakning: aktiv";
-    st.className = "mon-state" + (m.paused || m.muted ? " paused" : "");
+    const gaming = m.gaming && m.gaming.active;
+    st.textContent = m.paused ? "Bevakning: pausad" : m.muted ? "Bevakning: aktiv (tystad)" : gaming ? "Bevakning: aktiv · Spelläge: på" : "Bevakning: aktiv";
+    st.className = "mon-state" + (m.paused || m.muted || gaming ? " paused" : "");
     $("btn-mon-pause").textContent = m.paused ? "Återuppta" : "Pausa";
     $("btn-mon-mute").textContent = m.muted ? "Sluta tysta" : "Tysta 1 h";
     const watching = Object.entries(m.sources || {}).filter(([, v]) => v.state === "active").map(([k]) => k);
@@ -277,6 +278,8 @@
       `Sammanfattning ${m.morning_summary_time}`,
     ];
     if (m.waiting_for_summary) parts.push(`${m.waiting_for_summary} väntar`);
+    const g = m.gaming || {};
+    if (g.enabled) parts.unshift(g.active ? `Spelläge: på (${g.reason})` : "Spelläge: av");
     if (m.muted && m.muted_until) parts.push(`tystad till ${new Date(m.muted_until * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
     $("mon-meta").textContent = parts.join(" · ");
     const list = $("notify-list");

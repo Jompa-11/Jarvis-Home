@@ -65,6 +65,8 @@ def make_config(tmp_path: Path, **overrides: Any) -> JarvisConfig:
         "computer": {"enabled": True},
         # Never index the owner's real Downloads/Documents from tests.
         "files": {"watched_folders": [str(tmp_path / "watched")]},
+        # Never look at the real process list or GPU from tests (game mode is tested with fakes).
+        "gaming": {"enabled": False},
         "profiles": [
             {"id": "owner", "name": "Alex", "role": "owner"},
             {"id": "kid", "name": "Sam", "role": "child"},

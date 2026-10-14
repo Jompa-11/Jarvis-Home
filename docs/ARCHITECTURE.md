@@ -124,12 +124,21 @@ folder; runs one fixed command string `"%SystemRoot%\explorer.exe" /select,"<pat
 commas or spaces in a file name cannot become extra arguments (paths containing `"` or control characters
 are refused). It highlights the file in File Explorer and never opens the file itself.
 
+**Game mode** (`jarvis/monitoring/gaming.py`). Every `check_seconds` the process list (`tasklist`) and
+the GPU load (`nvidia-smi`) are read in a worker thread. Game mode is on while a process from
+`[gaming] process_names` runs, or after the GPU has stayed above `gpu_threshold_percent` for
+`gpu_high_minutes`. Turning on unloads every loaded Ollama model (`keep_alive: 0`). While it is on, the mail
+watcher still notifies rule matches (no model needed) but keeps other mail in memory instead of calling the
+local model; it is classified when game mode ends. `python -m jarvis toolcheck` uses the same check and
+refuses to run during a game.
+
 ## Safety model
 
 | Concern | Mechanism |
 |---|---|
 | Model text becoming commands | Only registered tools; JSON-schema validation; no shell tool exists |
 | Over-reach | Roles (owner/adult/child/guest) → allowed categories + max risk; tools a role can't use aren't even offered |
+| Personal data | Category `personal` (mail, files, notifications, summary, rules) belongs to the owner role only; the notification and summary API answer 403 and the UI shows "bara ägaren" for other profiles |
 | Consequential actions | Risk ≥ MEDIUM (or above the role's auto-approve level) → explicit UI confirmation; timeout = deny; cancelling a turn denies its pending confirmations |
 | Destructive actions | `Risk.HIGH`: always confirmed, owner only (none exist yet) |
 | Prompt injection via tool output | System prompt treats tool output as data; approvals come only from the local UI, never from a tool |

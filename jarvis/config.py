@@ -265,6 +265,17 @@ class FilesConfig(BaseModel):
     refresh_minutes: float = Field(15, ge=1, le=1440)
 
 
+class GamingConfig(BaseModel):
+    """Game mode: no background model calls while a game runs or the GPU is busy."""
+
+    enabled: bool = True
+    process_names: list[str] = Field(default_factory=lambda: ["cs2.exe"], max_length=100)
+    # Also game mode when the GPU (nvidia-smi) stays above this for gpu_high_minutes. 100 = off.
+    gpu_threshold_percent: int = Field(85, ge=1, le=100)
+    gpu_high_minutes: float = Field(2, ge=0.5, le=60)
+    check_seconds: float = Field(15, ge=5, le=600)
+
+
 class RetentionConfig(BaseModel):
     max_conversation_messages: int = Field(60, ge=4, le=1000)
     tool_history_size: int = Field(200, ge=10, le=5000)
@@ -300,6 +311,7 @@ class JarvisConfig(BaseModel):
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     mail: MailConfig = Field(default_factory=MailConfig)
     files: FilesConfig = Field(default_factory=FilesConfig)
+    gaming: GamingConfig = Field(default_factory=GamingConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     profiles: list[ProfileConfig] = Field(

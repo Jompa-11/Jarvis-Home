@@ -34,6 +34,7 @@ from .mail.base import MailProvider
 from .mail.gmail import GmailProvider
 from .mail.watcher import MailWatcher, register_mail_tools
 from .monitoring.channels import UIChannel, WindowsToastChannel
+from .monitoring.gaming import GamingDetector, GamingMode
 from .monitoring.notifier import NotificationChannel
 from .monitoring.service import MonitorService, register_monitor_tools
 from .rules import RulesConfig, load_rules, register_rules_tools
@@ -90,6 +91,11 @@ class JarvisCore:
             on_change=lambda: self.bus.publish("monitoring", self.monitoring_view()),
         )
         self.monitor.notifier.paused = self.settings.current.monitoring_paused
+        # Game mode: no background model calls while a game runs or the GPU is busy.
+        self.gaming = GamingMode(
+            GamingDetector(cfg.gaming), on_start=self._gaming_started, on_end=self._gaming_ended, on_change=self.monitor._changed
+        )
+        self.monitor.gaming = self.gaming
 
         self.registry = ToolRegistry()
         register_system_tools(self.registry, self)
@@ -100,7 +106,9 @@ class JarvisCore:
             provider = mail_provider if mail_provider is not None else GmailProvider(query=cfg.mail.query)
             # Mail is classified by the LOCAL model only: the Ollama provider object itself,
             # never the router, so routes or cloud providers can never be used for mail.
-            self.mail = MailWatcher(cfg.mail, provider, self.monitor, lambda: self.rules, lambda: self.router.providers.get("ollama"))
+            self.mail = MailWatcher(
+                cfg.mail, provider, self.monitor, lambda: self.rules, lambda: self.router.providers.get("ollama"), is_gaming=lambda: self.gaming.active
+            )
             register_mail_tools(self.registry, self.mail)
             self.monitor.add_digest("mail", self.mail.important_since)
         self.files: FileWatcher | None = None
@@ -154,6 +162,15 @@ class JarvisCore:
         if self.owner_active():
             self.bus.publish(event, data)
 
+    async def _gaming_started(self) -> None:
+        ollama = self.router.providers.get("ollama")
+        if ollama is not None and hasattr(ollama, "unload"):
+            await ollama.unload()  # give the GPU back to the game
+
+    async def _gaming_ended(self) -> None:
+        if self.mail is not None and self.mail.waiting:
+            await self.mail.classify_waiting()
+
     def _privacy(self) -> PrivacyConfig:
         st = self.settings.current
         return self.cfg.privacy.model_copy(update={"local_only": st.local_only, "cloud_max_sensitivity": st.cloud_max_sensitivity})
@@ -165,6 +182,9 @@ class JarvisCore:
         self._state_watch = asyncio.create_task(self._push_state_after_actions(), name="jarvis-state-watch")
         if self.cfg.monitoring.enabled:
             await self.monitor.start()
+            if self.cfg.gaming.enabled:
+                await self.gaming.poll()  # before the first mail check, so a running game is respected
+                self.monitor.scheduler.every("gaming", self.cfg.gaming.check_seconds, self.gaming.poll)
             if self.mail is not None:
                 self.mail._publish_state()
                 if self.mail.provider.signed_in():

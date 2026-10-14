@@ -54,6 +54,7 @@ class MonitorService:
         }
         self.last_summary: dict[str, Any] | None = None
         self.digests: dict[str, Callable[[float | None], Any]] = {}
+        self.gaming: Any = None  # GamingMode, set by the core
 
     def _changed(self) -> None:
         if self.on_change:
@@ -175,6 +176,7 @@ class MonitorService:
             "jobs": self.scheduler.status(),
             "morning_summary_time": self.get_rules().notifications.morning_summary_time,
             "last_summary_at": self.last_summary["created_at"] if self.last_summary else None,
+            "gaming": self.gaming.status() if self.gaming is not None else {"enabled": False, "active": False, "reason": None, "since": None},
         }
 
     def snapshot(self) -> dict[str, Any]:

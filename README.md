@@ -5,7 +5,7 @@ orchestrator, hybrid AI (Claude in the cloud, Ollama locally), Home Assistant /
 Sonos control, a restricted Windows control layer, and a holographic HUD
 interface. Every indicator in the interface shows real backend state.
 
-![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-324%20passing-5fe3ff)
+![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-340%20passing-5fe3ff)
 
 ## What works today
 
@@ -23,6 +23,7 @@ interface. Every indicator in the interface shows real backend state.
 | Gmail, read-only: important mail by your rules first, other mail classified by the **local** model only | ✅ After `python -m jarvis mail-login`; token in Windows Credential Manager |
 | File search and folder watching (Hämtade filer, Dokument): metadata only, never file contents | ✅ "hitta min senaste faktura", "öppna mappen där den ligger" (dry-run by default) |
 | Summary: important mail, new files and what waited, every morning or on demand ("Sammanfatta nu") | ✅ Shown in the notification panel until acknowledged |
+| Game mode: no background AI calls on the GPU while you play (e.g. `cs2.exe`, or GPU > 85 % for 2 min) | ✅ Mail that needs the model waits; rule matches still notify. "Spelläge: på" in the panel |
 | Camera / gestures / identity / calendars / memory | ⏳ Interfaces only |
 
 ## Quick start (Windows 11)
@@ -80,6 +81,11 @@ Home Assistant and Sonos setup: see [docs/HOME_ASSISTANT_SETUP.md](docs/HOME_ASS
   time into `data\files.db` every 15 minutes and never opens a file. Secret-looking files (`.env`, keys,
   certificates, password databases, VPN profiles), `.ssh`/`.git`/`node_modules`/`AppData`, hidden and
   system files, and links/junctions are skipped.
+* `[gaming]` in `config\jarvis.toml`: `process_names` (default `["cs2.exe"]`, add your games) and
+  `gpu_threshold_percent` / `gpu_high_minutes`. While game mode is on, the local model is unloaded from the
+  GPU, mail classification waits until the game closes, and `toolcheck` refuses to run.
+* Mail, files, notifications, the summary and your rules are **owner only**: other profiles are neither
+  offered those tools nor shown notifications.
 
 ## Using it
 
@@ -102,7 +108,7 @@ Try “list speakers”, “set the kitchen to 30 percent”, “pause the livin
 
 ```bash
 pip install --require-hashes -r requirements-dev.lock
-python -m pytest            # 324 tests; no network, no hardware, no credentials needed
+python -m pytest            # 340 tests; no network, no hardware, no credentials needed
 python tests/fake_ha.py     # fake Home Assistant on :8123 (token "demo-token") for UI testing
 ```
 
