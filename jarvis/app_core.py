@@ -48,6 +48,9 @@ PRIVACY_KEYS = {"local_only", "cloud_max_sensitivity"}
 
 class JarvisCore:
     HEALTH_INTERVAL_S = 30.0
+    # Right after login Ollama may still be starting: check more often for a while, and say so.
+    OLLAMA_STARTUP_WINDOW_S = 300.0
+    OLLAMA_STARTUP_INTERVAL_S = 5.0
 
     def __init__(
         self,
@@ -216,9 +219,16 @@ class JarvisCore:
                 pass
         log.info("JARVIS core stopped")
 
+    def _ollama_starting(self, providers: list[dict[str, Any]]) -> bool:
+        """Shortly after start, an unreachable Ollama is most likely still starting."""
+        if time.time() - self.started_at > self.OLLAMA_STARTUP_WINDOW_S:
+            return False
+        return any(p["name"] == "ollama" and not p["available"] for p in providers)
+
     async def _health_loop(self) -> None:
         while True:
-            await asyncio.sleep(self.HEALTH_INTERVAL_S)
+            starting = self._ollama_starting(await self.router.status())
+            await asyncio.sleep(self.OLLAMA_STARTUP_INTERVAL_S if starting else self.HEALTH_INTERVAL_S)
             try:
                 await self.refresh_integrations()
             except Exception:
@@ -268,6 +278,10 @@ class JarvisCore:
     async def snapshot(self) -> dict[str, Any]:
         st = self.settings.current
         providers = await self.router.status()
+        if self._ollama_starting(providers):
+            for p in providers:
+                if p["name"] == "ollama" and not p["available"]:
+                    p["detail"] = "Ollama startar… (försöker igen var 5:e sekund)"
         chain = self.cfg.ai.routes["conversation"]
         speakers = [s.public() for s in self.sonos.cached_speakers()]
         ha_state = self.ha.status.state

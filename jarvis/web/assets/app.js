@@ -113,7 +113,8 @@
       list.appendChild(statusRow(dot, "Cloud AI · Claude", detail, val, dot === "ok" ? "ok" : dot === "warn" ? "warn" : ""));
     }
     if (local) {
-      list.appendChild(statusRow(local.available ? "ok" : "off", "Local AI · Ollama", local.detail, local.available ? "Ready" : "Offline", local.available ? "ok" : ""));
+      const starting = !local.available && (local.detail || "").startsWith("Ollama startar");
+      list.appendChild(statusRow(local.available ? "ok" : starting ? "warn" : "off", "Local AI · Ollama", local.detail, local.available ? "Ready" : starting ? "Startar…" : "Offline", local.available ? "ok" : starting ? "warn" : ""));
     }
     if (!providers.some((p) => p.available && p.kind !== "dev")) {
       list.appendChild(statusRow("warn", "Dev fallback", "Rule-based stand-in; not an AI model", "Active", "warn"));

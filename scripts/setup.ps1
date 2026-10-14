@@ -6,7 +6,7 @@
   and creates local config files from the examples if they do not exist.
   Changes nothing outside the project folder.
 .PARAMETER Desktop
-  Also install pywebview for the native desktop window.
+  Kept for compatibility: the desktop app (pywebview, pystray) is now part of the lock file.
 .PARAMETER Dev
   Also install test dependencies (pytest).
 #>
@@ -47,10 +47,6 @@ $req = if ($Dev) { 'requirements-dev.lock' } else { 'requirements.lock' }
 Write-Host "Installing pinned dependencies from $req ..."
 & $venvPy -m pip install --require-hashes -r $req --quiet
 if ($LASTEXITCODE -ne 0) { Write-Host 'Dependency installation failed.' -ForegroundColor Red; exit 1 }
-if ($Desktop) {
-    Write-Host 'Installing pywebview for the desktop window...'
-    & $venvPy -m pip install 'pywebview>=5.0' --quiet
-}
 
 if (-not (Test-Path 'config\jarvis.toml')) {
     Copy-Item 'config\jarvis.example.toml' 'config\jarvis.toml'

@@ -10,3 +10,8 @@ python-dotenv>=1.0
 google-auth-oauthlib>=1.2
 # OAuth tokens are stored in Windows Credential Manager, never in files
 keyring>=25.0
+# Desktop app (Windows only; the Raspberry Pi backend does not need it):
+# native window (Edge WebView2), the icon by the clock, and its image
+pywebview>=5.0; sys_platform == "win32"
+pystray>=0.19; sys_platform == "win32"
+Pillow>=10.4; sys_platform == "win32"

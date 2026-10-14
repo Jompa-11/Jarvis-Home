@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -68,7 +69,7 @@ class RedactingFilter(logging.Filter):
         return True
 
 
-def setup_logging(level: str = "INFO", log_dir: Path | None = None) -> None:
+def setup_logging(level: str = "INFO", log_dir: Path | None = None, filename: str = "jarvis.log") -> None:
     root = logging.getLogger()
     root.setLevel(level)
     for h in list(root.handlers):
@@ -78,15 +79,16 @@ def setup_logging(level: str = "INFO", log_dir: Path | None = None) -> None:
     fmt = logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s")
     redactor = RedactingFilter()
 
-    console = logging.StreamHandler()
-    console.setFormatter(fmt)
-    console.addFilter(redactor)
-    console._jarvis = True  # type: ignore[attr-defined]
-    root.addHandler(console)
+    if sys.stderr is not None:  # pythonw.exe has no console: then logs go to the file only
+        console = logging.StreamHandler()
+        console.setFormatter(fmt)
+        console.addFilter(redactor)
+        console._jarvis = True  # type: ignore[attr-defined]
+        root.addHandler(console)
 
     if log_dir is not None:
         log_dir.mkdir(parents=True, exist_ok=True)
-        fh = RotatingFileHandler(log_dir / "jarvis.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+        fh = RotatingFileHandler(log_dir / filename, maxBytes=2_000_000, backupCount=3, encoding="utf-8")
         fh.setFormatter(fmt)
         fh.addFilter(redactor)
         fh._jarvis = True  # type: ignore[attr-defined]

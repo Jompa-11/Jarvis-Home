@@ -1,7 +1,8 @@
 """Command-line entry point.
 
     python -m jarvis              start the server and open the interface in the browser
-    python -m jarvis --desktop    start in a native window (needs the optional 'pywebview' package)
+    python -m jarvis --desktop    start as the desktop app (own window, icon by the clock)
+    pythonw -m jarvis --background [--startup]   the same without a console (autostart / pinned app)
     python -m jarvis check        validate configuration and show what is configured
     python -m jarvis diagnose     inspect this machine (hardware, devices, services)
     python -m jarvis toolcheck    check that the local AI model uses JARVIS's tools (dry-run)
@@ -15,9 +16,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import threading
-import time
 import webbrowser
 
 from dotenv import load_dotenv
@@ -58,41 +59,48 @@ def _check(cfg: JarvisConfig) -> int:
     return 0
 
 
-def _serve(cfg: JarvisConfig, desktop: bool, open_browser: bool) -> int:
+def _watch_stdin_for_stop(server) -> None:
+    """Child of the desktop app: when the app closes our stdin (Avsluta), stop cleanly."""
+
+    def watch() -> None:
+        try:
+            while os.read(0, 1024):
+                pass
+        except OSError:
+            return  # no usable stdin: never stop because of it
+        log.info("Desktop app asked the server to stop")
+        server.should_exit = True
+
+    threading.Thread(target=watch, name="jarvis-stdin-watch", daemon=True).start()
+
+
+def _serve(cfg: JarvisConfig, open_browser: bool, *, child: bool = False) -> int:
     import uvicorn
 
     from .app_core import JarvisCore
     from .server.app import create_app
 
     core = JarvisCore(cfg)
-    app = create_app(core)
+    # The desktop app passes the session token so its tray menu can call the API. It is
+    # removed from the environment at once, so no process started from here inherits it.
+    token = os.environ.pop("JARVIS_API_TOKEN", None) if child else None
+    app = create_app(core, token=token)
     url = f"http://{cfg.server.host}:{cfg.server.port}/"
-    server = uvicorn.Server(uvicorn.Config(app, host=cfg.server.host, port=cfg.server.port, log_level="warning", log_config=None))
+    server = uvicorn.Server(uvicorn.Config(
+            app, host=cfg.server.host, port=cfg.server.port, log_level="warning", log_config=None,
+            # Open UI websockets would otherwise keep a stop waiting until they disconnect.
+            timeout_graceful_shutdown=3,
+        ))
 
-    if desktop:
-        try:
-            import webview  # type: ignore[import-not-found]
-        except ImportError:
-            print("pywebview is not installed; opening in the browser instead (pip install pywebview).")
-            desktop = False
-
-    if not desktop:
-        if open_browser:
-            threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-        print(f"JARVIS running at {url}  (Ctrl+C to stop)")
+    if child:
+        _watch_stdin_for_stop(server)
         server.run()
         return 0
 
-    thread = threading.Thread(target=server.run, name="jarvis-server", daemon=True)
-    thread.start()
-    for _ in range(100):
-        if server.started:
-            break
-        time.sleep(0.1)
-    webview.create_window("J.A.R.V.I.S.", url, width=1480, height=920, min_size=(980, 640), background_color="#02060d")
-    webview.start()
-    server.should_exit = True
-    thread.join(timeout=10)
+    if open_browser:
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    print(f"JARVIS running at {url}  (Ctrl+C to stop)")
+    server.run()
     return 0
 
 
@@ -104,6 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", help="Path to jarvis.toml")
     parser.add_argument("--desktop", action="store_true", help="Open in a native window (pywebview)")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
+    parser.add_argument("--background", action="store_true", help="Desktop app without a console (use pythonw.exe); X hides the window")
+    parser.add_argument("--startup", action="store_true", help="Started at login: wait ~10 s before showing the window")
+    parser.add_argument("--serve-child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--model", help="toolcheck: Ollama model to test (default: the configured one)")
     args = parser.parse_args(argv)
 
@@ -114,7 +125,12 @@ def main(argv: list[str] | None = None) -> int:
         print(exc, file=sys.stderr)
         return 2
 
-    setup_logging(cfg.logging.level, cfg.data_dir / "logs" if cfg.logging.to_file and args.command == "run" else None)
+    desktop_app = args.command == "run" and (args.desktop or args.background) and not args.serve_child
+    setup_logging(
+        cfg.logging.level,
+        cfg.data_dir / "logs" if cfg.logging.to_file and args.command == "run" else None,
+        filename="desktop.log" if desktop_app else "jarvis.log",
+    )
 
     if args.command == "check":
         return _check(cfg)
@@ -158,7 +174,13 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(diagnostics.collect(cfg.data_dir, envs), indent=2))
         return 0
     try:
-        return _serve(cfg, args.desktop, cfg.server.open_browser and not args.no_browser)
+        if args.serve_child:
+            return _serve(cfg, False, child=True)
+        if desktop_app:
+            from .desktop.app import run_desktop
+
+            return run_desktop(cfg, startup=args.startup)
+        return _serve(cfg, cfg.server.open_browser and not args.no_browser)
     except KeyboardInterrupt:
         # Ctrl+C is the normal way to stop JARVIS; no traceback needed.
         print("JARVIS stopped.")

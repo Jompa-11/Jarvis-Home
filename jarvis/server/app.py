@@ -235,14 +235,29 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
             return
         await websocket.accept()
         queue = core.bus.subscribe()
+        # Also wait for the client (or a server shutdown) to close the socket, so a stop
+        # never hangs on a handler that only waits for the next event.
+        receiver = asyncio.create_task(websocket.receive())
+        getter: asyncio.Task | None = None
         try:
             await websocket.send_json({"type": "state", "data": await core.snapshot()})
             while True:
-                event = await queue.get()
-                await websocket.send_json(event)
+                if getter is None:
+                    getter = asyncio.create_task(queue.get())
+                done, _ = await asyncio.wait({getter, receiver}, return_when=asyncio.FIRST_COMPLETED)
+                if receiver in done:
+                    if receiver.result().get("type") == "websocket.disconnect":
+                        break
+                    receiver = asyncio.create_task(websocket.receive())  # ignore anything the client sends
+                if getter in done:
+                    await websocket.send_json(getter.result())
+                    getter = None
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
+            for task in (getter, receiver):
+                if task is not None and not task.done():
+                    task.cancel()
             core.bus.unsubscribe(queue)
 
     return app
