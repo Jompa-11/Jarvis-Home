@@ -90,7 +90,7 @@ def fake_ha():
 def make_core(tmp_path, fake_ha, monkeypatch):
     created: list[JarvisCore] = []
 
-    def _make(providers: dict[str, AIProvider] | None = None, *, ha_token: bool = True, rules: RulesConfig | None = None, mail_provider: Any = None, **cfg_overrides) -> JarvisCore:
+    def _make(providers: dict[str, AIProvider] | None = None, *, ha_token: bool = True, rules: RulesConfig | None = None, mail_provider: Any = None, notification_channels: list | None = None, **cfg_overrides) -> JarvisCore:
         if ha_token:
             monkeypatch.setenv("HA_TOKEN", HA_TOKEN)
         cfg = make_config(tmp_path, **cfg_overrides)
@@ -103,7 +103,7 @@ def make_core(tmp_path, fake_ha, monkeypatch):
             # Never read the owner's real config/rules.toml from tests.
             rules=rules if rules is not None else RulesConfig(),
             # Never show real Windows notifications from tests.
-            notification_channels=[],
+            notification_channels=notification_channels if notification_channels is not None else [],
             # Never touch Gmail or Windows Credential Manager from tests.
             mail_provider=mail_provider if mail_provider is not None else FakeMailProvider(signed_in=False),
         )

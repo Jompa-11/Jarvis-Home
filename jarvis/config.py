@@ -265,6 +265,18 @@ class FilesConfig(BaseModel):
     refresh_minutes: float = Field(15, ge=1, le=1440)
 
 
+class DiscordConfig(BaseModel):
+    """Phone notifications through a Discord webhook (outgoing only). The URL is a secret in .env."""
+
+    enabled: bool = True  # still needs DISCORD_WEBHOOK_URL in .env
+    webhook_env: str = "DISCORD_WEBHOOK_URL"
+    # "minimal": type + sender/domain or file name. "summary": plus one sentence for mail.
+    phone_detail: Literal["minimal", "summary"] = "minimal"
+    max_per_hour: int = Field(5, ge=1, le=60)
+    timeout_s: float = Field(10, gt=0, le=30)
+    max_attempts: int = Field(3, ge=1, le=5)
+
+
 class GamingConfig(BaseModel):
     """Game mode: no background model calls while a game runs or the GPU is busy."""
 
@@ -312,6 +324,7 @@ class JarvisConfig(BaseModel):
     mail: MailConfig = Field(default_factory=MailConfig)
     files: FilesConfig = Field(default_factory=FilesConfig)
     gaming: GamingConfig = Field(default_factory=GamingConfig)
+    discord: DiscordConfig = Field(default_factory=DiscordConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     profiles: list[ProfileConfig] = Field(

@@ -32,6 +32,8 @@ class RuntimeSettings(BaseModel):
     speak_replies: bool = False
     # Monitoring paused: nothing interrupts; everything waits for the summary.
     monitoring_paused: bool = False
+    # Discord phone notifications paused (everything else keeps working).
+    discord_paused: bool = False
 
     def dry_run_categories(self) -> frozenset[str]:
         cats = set()

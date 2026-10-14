@@ -28,6 +28,8 @@ _PATTERNS = [
     re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
     # OAuth redirect parameters, e.g. Google's one-time "?code=4/0A..." after sign-in.
     re.compile(r"([?&](?:code|access_token|refresh_token|id_token)=)[^&\s\"']+"),
+    # Discord webhook URLs: the id and token are the secret.
+    re.compile(r"((?:https?://)?(?:\w+\.)?discord(?:app)?\.com/api/webhooks/)[^\s\"'<>]+", re.I),
 ]
 
 

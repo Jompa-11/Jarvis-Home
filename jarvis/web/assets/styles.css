@@ -265,6 +265,8 @@ button, input, select { font: inherit; color: inherit; }
 .mon-state.off { color: var(--text-faint); }
 .mon-controls { margin: 2px 0 6px; flex-wrap: wrap; }
 .mon-controls .btn { padding: 5px 10px; font-size: 11px; }
+.discord-row { align-items: center; }
+.discord-row[hidden] { display: none; }
 .mon-meta { font-size: 11px; color: var(--text-faint); margin-bottom: 6px; }
 .summary-card { border: 1px solid rgba(95, 227, 255, 0.35); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; color: var(--text-dim); }
 .summary-card[hidden] { display: none; }
