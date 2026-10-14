@@ -218,7 +218,7 @@ def register_monitor_tools(registry: "ToolRegistry", monitor: MonitorService) ->
             schema({}),
             monitor_status,
             Risk.READ,
-            "system",
+            "personal",
             output_sensitivity="personal",
         )
     )
@@ -239,7 +239,7 @@ def register_monitor_tools(registry: "ToolRegistry", monitor: MonitorService) ->
             schema({}),
             monitor_summary_now,
             Risk.LOW,
-            "system",
+            "personal",
             output_sensitivity="personal",
         )
     )

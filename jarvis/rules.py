@@ -183,7 +183,7 @@ def register_rules_tools(registry: "ToolRegistry", get_rules) -> None:
             schema({}),
             rules_show,
             Risk.READ,
-            "system",
+            "personal",
             output_sensitivity="personal",
         )
     )

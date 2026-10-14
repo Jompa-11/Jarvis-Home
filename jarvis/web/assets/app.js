@@ -135,7 +135,9 @@
     list.appendChild(statusRow("na", "Camera", "No camera module installed (Phase 3)", "Off"));
 
     const mon = s.monitoring;
-    if (mon) {
+    if (mon && mon.restricted) {
+      list.appendChild(statusRow("off", "Bevakning", mon.detail, "Bara ägaren", ""));
+    } else if (mon) {
       const active = Object.values(mon.sources || {}).filter((v) => v.state === "active").length;
       const [mdot, mval, mcls] = mon.paused ? ["warn", "Pausad", "warn"] : mon.muted ? ["warn", "Tystad", "warn"] : ["ok", "Aktiv", "ok"];
       list.appendChild(statusRow(mdot, "Bevakning", `${active} källa/källor · kanaler: ${(mon.channels || []).map((c) => c.name).join(", ") || "inga"}`, mval, mcls));
@@ -253,6 +255,17 @@
   function renderMonitoring(m) {
     if (!m) return;
     const st = $("mon-state");
+    // Other profiles than the owner see no notifications, summary or controls.
+    document.querySelectorAll(".mon-controls .btn").forEach((b) => (b.hidden = !!m.restricted));
+    if (m.restricted) {
+      st.textContent = "Bevakning: bara ägaren";
+      st.className = "mon-state off";
+      $("mon-meta").textContent = m.detail;
+      $("notify-list").replaceChildren();
+      $("notify-empty").hidden = true;
+      renderSummary(null);
+      return;
+    }
     st.textContent = m.paused ? "Bevakning: pausad" : m.muted ? "Bevakning: aktiv (tystad)" : "Bevakning: aktiv";
     st.className = "mon-state" + (m.paused || m.muted ? " paused" : "");
     $("btn-mon-pause").textContent = m.paused ? "Återuppta" : "Pausa";

@@ -189,29 +189,39 @@ def create_app(core: JarvisCore, *, token: str | None = None, extra_hosts: set[s
         return core.diagnostics
 
     # -- monitoring and notifications -----------------------------------------------
+    # Notifications and the summary are personal: only for the owner profile.
+    def require_owner() -> None:
+        if not core.owner_active():
+            raise HTTPException(status_code=403, detail="Only the owner profile can see or change notifications.")
+
     @app.get("/api/monitoring")
     async def monitoring() -> dict[str, Any]:
+        require_owner()
         return core.monitor.snapshot()
 
     @app.post("/api/monitoring/pause")
     async def monitoring_pause(body: PauseIn) -> dict[str, Any]:
+        require_owner()
         await core.update_settings({"monitoring_paused": body.paused})  # persisted like other settings
         return core.monitor.snapshot()
 
     @app.post("/api/notifications/mute")
     async def notifications_mute(body: MuteIn) -> dict[str, Any]:
+        require_owner()
         core.monitor.mute(body.minutes)
         return core.monitor.snapshot()
 
     @app.post("/api/monitoring/summary")
     async def monitoring_summary() -> dict[str, Any]:
+        require_owner()
         await core.monitor.summary_now()  # "Sammanfatta nu"
         return core.monitor.snapshot()
 
     @app.post("/api/notifications/ack")
     async def notifications_ack(body: AckIn) -> dict[str, Any]:
+        require_owner()
         count = core.monitor.notifier.acknowledge(body.id)
-        core.bus.publish("monitoring", core.monitor.snapshot())
+        core.bus.publish("monitoring", core.monitoring_view())
         return {"acknowledged": count}
 
     # -- live events -------------------------------------------------------------

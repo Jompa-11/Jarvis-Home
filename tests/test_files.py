@@ -274,7 +274,7 @@ async def test_tools_registered_with_declared_risk(make_core):
     s = core.registry.get("files_search")
     assert s.risk.name == "READ" and s.output_sensitivity == "personal" and not s.supports_dry_run
     o = core.registry.get("files_open_folder")
-    assert o.risk.name == "MEDIUM" and o.supports_dry_run and o.category == "computer" and o.confirm_summary is not None
+    assert o.risk.name == "MEDIUM" and o.supports_dry_run and o.category == "personal" and o.dry_run_category == "computer" and o.confirm_summary is not None
 
 
 async def test_files_search_via_model_is_hidden_from_cloud(make_core, tmp_path):

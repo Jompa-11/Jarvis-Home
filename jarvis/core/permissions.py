@@ -37,7 +37,8 @@ class RolePolicy:
     auto_approve_max: Risk
 
 
-ALL_CATEGORIES = frozenset({"system", "smart_home", "media", "computer"})
+# "personal": the owner's mail, files, notifications, summary and rules. Owner only.
+ALL_CATEGORIES = frozenset({"system", "smart_home", "media", "computer", "personal"})
 
 ROLE_POLICIES: dict[str, RolePolicy] = {
     "owner": RolePolicy(ALL_CATEGORIES, Risk.HIGH, Risk.LOW),

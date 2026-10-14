@@ -263,7 +263,7 @@ def register_file_tools(registry: "ToolRegistry", watcher: FileWatcher, *, allow
             ),
             files_search,
             Risk.READ,
-            "system",
+            "personal",
             output_sensitivity="personal",
         )
     )
@@ -284,9 +284,10 @@ def register_file_tools(registry: "ToolRegistry", watcher: FileWatcher, *, allow
             schema({"path": {"type": "string", "maxLength": 1000, "description": "'path' from files_search."}}, ["path"]),
             files_open_folder,
             Risk.MEDIUM,
-            "computer",
+            "personal",
             output_sensitivity="personal",
             supports_dry_run=True,
+            dry_run_category="computer",  # follows the computer dry-run switch
             confirm_summary=lambda a: f"Open the folder containing '{os.path.basename(a['path'])}' in File Explorer",
         )
     )

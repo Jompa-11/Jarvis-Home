@@ -171,7 +171,7 @@ def register_mail_tools(registry: "ToolRegistry", watcher: MailWatcher) -> None:
             ),
             mail_list_recent,
             Risk.READ,
-            "system",
+            "personal",
             output_sensitivity="personal",
         )
     )

@@ -87,7 +87,7 @@ class JarvisCore:
             lambda: self.rules,
             channels=notification_channels,
             state_path=data / "monitor_state.json" if data else None,
-            on_change=lambda: self.bus.publish("monitoring", self.monitor.snapshot()),
+            on_change=lambda: self.bus.publish("monitoring", self.monitoring_view()),
         )
         self.monitor.notifier.paused = self.settings.current.monitoring_paused
 
@@ -128,7 +128,7 @@ class JarvisCore:
         self._state_watch: asyncio.Task | None = None
 
     def _default_channels(self) -> list[NotificationChannel]:
-        channels: list[NotificationChannel] = [UIChannel(self.bus.publish)]
+        channels: list[NotificationChannel] = [UIChannel(self._publish_if_owner)]
         want_windows = self.cfg.monitoring.windows_notifications
         if want_windows is None:
             want_windows = sys.platform == "win32"
@@ -138,6 +138,21 @@ class JarvisCore:
             except RuntimeError as exc:
                 log.info("Windows notifications unavailable: %s", exc)
         return channels
+
+    # -- owner-only views -------------------------------------------------------
+    def owner_active(self) -> bool:
+        profile = self.cfg.profile(self.settings.current.active_profile)
+        return profile is not None and profile.role == "owner"
+
+    def monitoring_view(self) -> dict[str, Any]:
+        """Notifications and the summary are personal: only shown for the owner profile."""
+        if self.owner_active():
+            return self.monitor.snapshot()
+        return {"restricted": True, "detail": "Notiser och sammanfattning visas bara för ägarprofilen."}
+
+    def _publish_if_owner(self, event: str, data: dict[str, Any]) -> None:
+        if self.owner_active():
+            self.bus.publish(event, data)
 
     def _privacy(self) -> PrivacyConfig:
         st = self.settings.current
@@ -259,7 +274,7 @@ class JarvisCore:
                 "sonos": {"state": sonos_state, "detail": sonos_detail, "speakers": speakers},
             },
             "voice": self.voice.status(),
-            "monitoring": self.monitor.snapshot(),
+            "monitoring": self.monitoring_view(),
             "camera": {"state": "not_implemented", "master_switch": "on" if st.camera_enabled else "off"},
             "computer": {**self.windows.status(), "dry_run": st.dry_run_computer},
             "settings": st.model_dump(),
