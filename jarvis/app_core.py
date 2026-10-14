@@ -11,7 +11,12 @@ from typing import Any
 import httpx
 
 from . import __version__
+from .computer.apps import AppLauncher
+from .computer.desktop import Desktop
 from .computer.tools import register_computer_tools
+from .computer.tools_desktop import register_desktop_tools
+from .computer.shell import PowerShellRunner
+from .computer.userfiles import FileActions
 from .computer.windows import WindowsControl
 from .config import JarvisConfig, PrivacyConfig
 from .core.events import EventBus
@@ -63,6 +68,10 @@ class JarvisCore:
         rules: RulesConfig | None = None,
         notification_channels: list[NotificationChannel] | None = None,
         mail_provider: MailProvider | None = None,
+        launcher: AppLauncher | None = None,
+        desktop: Desktop | None = None,
+        file_actions: FileActions | None = None,
+        shell: PowerShellRunner | None = None,
     ) -> None:
         self.cfg = cfg
         self.rules = rules if rules is not None else load_rules()
@@ -121,11 +130,24 @@ class JarvisCore:
             # Opening Explorer is desktop control: only where computer control is enabled.
             register_file_tools(self.registry, self.files, allow_open=self.windows.enabled)
             self.monitor.add_digest("files", self.files.take_new)
-        register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
+        if cfg.homeassistant.enabled and cfg.homeassistant.url:
+            # Without a Home Assistant URL these tools can only fail, and every extra
+            # tool makes the local model's choice worse. Registered once it is configured.
+            register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
         if self.windows.enabled:
             # Desktop control is platform-specific; a headless backend (e.g. a
             # Raspberry Pi) runs without it and never offers these tools.
-            register_computer_tools(self.registry, self.windows)
+            # One AppLauncher/Desktop/FileActions is shared, so "ångra" undoes
+            # the file action JARVIS actually did.
+            # Injectable so tests never read the real Start menu or touch the real desktop.
+            self.launcher = launcher or AppLauncher(cfg.computer)
+            self.desktop = desktop or Desktop()
+            self.file_actions = file_actions or FileActions()
+            register_computer_tools(self.registry, self.windows, launcher=self.launcher, desktop=self.desktop, files=self.file_actions)
+            register_desktop_tools(
+                self.registry, desktop=self.desktop, files=self.file_actions, shell=shell,
+                advanced_mode=lambda: self.settings.current.advanced_mode,
+            )
 
         self.policy = PermissionPolicy()
         self.confirmations = ConfirmationManager(self.bus)
@@ -182,6 +204,9 @@ class JarvisCore:
     async def start(self) -> None:
         await self.refresh_integrations()
         self._bg = asyncio.create_task(self._health_loop(), name="jarvis-health")
+        if getattr(self, "launcher", None) is not None:
+            # Read the Start menu once in the background, so the first "öppna spotify" is instant.
+            asyncio.create_task(asyncio.to_thread(self.launcher.apps), name="jarvis-app-index")
         self._state_watch = asyncio.create_task(self._push_state_after_actions(), name="jarvis-state-watch")
         if self.cfg.monitoring.enabled:
             await self.monitor.start()

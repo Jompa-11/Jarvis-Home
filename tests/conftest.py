@@ -14,6 +14,10 @@ from fake_ha import create_fake_ha  # noqa: E402
 from fake_mail import FakeMailProvider  # noqa: E402
 
 from jarvis.app_core import JarvisCore  # noqa: E402
+from jarvis.computer.apps import App, AppLauncher  # noqa: E402
+from jarvis.computer.desktop import Desktop  # noqa: E402
+from jarvis.computer.shell import PowerShellRunner  # noqa: E402
+from jarvis.computer.userfiles import FileActions  # noqa: E402
 from jarvis.config import JarvisConfig  # noqa: E402
 from jarvis.providers.base import AIProvider, ProviderHealth, ProviderResponse, ToolCall, Usage  # noqa: E402
 from jarvis.rules import RulesConfig  # noqa: E402
@@ -56,13 +60,75 @@ class ScriptedProvider(AIProvider):
         return ProviderResponse("", calls, "tool_use", Usage(10, 5), self.name, model or "m")
 
 
+FAKE_APPS = [
+    App("Spotify", "SpotifyAB.SpotifyMusic_x!Spotify"),
+    App("Discord", "com.squirrel.Discord.Discord"),
+    App("Anteckningar", "Microsoft.WindowsNotepad_x!App"),
+    App("Google Chrome", "Chrome"),
+    App("Kalkylatorn", "Microsoft.WindowsCalculator_x!App"),
+]
+
+
+class FakeDesktopAPI:
+    """A desktop that records what it was asked to do instead of doing it."""
+
+    supported = True
+
+    def __init__(self) -> None:
+        self.volume, self.muted = 40, False
+        self.actions: list[tuple] = []
+        self.clipboard = ""
+
+    def get_volume(self) -> tuple[int, bool]:
+        return self.volume, self.muted
+
+    def set_volume(self, percent: int) -> None:
+        self.volume = percent
+        self.actions.append(("volume", percent))
+
+    def set_mute(self, muted: bool) -> None:
+        self.muted = muted
+        self.actions.append(("mute", muted))
+
+    def press_keys(self, vks: list[int]) -> None:
+        self.actions.append(("keys", list(vks)))
+
+    def type_text(self, text: str) -> None:
+        self.actions.append(("type", text))
+
+    def get_clipboard(self) -> str:
+        return self.clipboard
+
+    def set_clipboard(self, text: str) -> None:
+        self.clipboard = text
+        self.actions.append(("clipboard", text))
+
+    def active_window_title(self) -> str:
+        return "Testfönster"
+
+    def window_action(self, hwnd: int, action: str) -> None:
+        self.actions.append(("window", hwnd, action))
+
+    def lock_workstation(self) -> None:
+        self.actions.append(("lock",))
+
+    def power(self, action: str) -> None:
+        self.actions.append(("power", action))
+
+
+def _no_shell(*a, **kw):
+    raise AssertionError("a test must never run a real PowerShell command")
+
+
 def make_config(tmp_path: Path, **overrides: Any) -> JarvisConfig:
     raw: dict[str, Any] = {
         "data_dir": str(tmp_path / "data"),
         "ai": {"routes": {"conversation": [{"provider": "anthropic", "model": "claude-opus-5-5"}, {"provider": "ollama"}, {"provider": "dev"}]}},
         # Tests exercise real (fake-HA) calls; dry-run behaviour is tested explicitly.
         "homeassistant": {"url": "http://ha.test", "timeout_s": 2, "dry_run": False},
-        "computer": {"enabled": True},
+        # Dry-run ON in tests (the product default is off): a test must never really
+        # launch a program or open Explorer. Tests that check real execution use fakes.
+        "computer": {"enabled": True, "dry_run": True},
         # Never index the owner's real Downloads/Documents from tests.
         "files": {"watched_folders": [str(tmp_path / "watched")]},
         # Never look at the real process list or GPU from tests (game mode is tested with fakes).
@@ -90,7 +156,7 @@ def fake_ha():
 def make_core(tmp_path, fake_ha, monkeypatch):
     created: list[JarvisCore] = []
 
-    def _make(providers: dict[str, AIProvider] | None = None, *, ha_token: bool = True, rules: RulesConfig | None = None, mail_provider: Any = None, **cfg_overrides) -> JarvisCore:
+    def _make(providers: dict[str, AIProvider] | None = None, *, ha_token: bool = True, rules: RulesConfig | None = None, mail_provider: Any = None, shell: Any = None, **cfg_overrides) -> JarvisCore:
         if ha_token:
             monkeypatch.setenv("HA_TOKEN", HA_TOKEN)
         cfg = make_config(tmp_path, **cfg_overrides)
@@ -106,8 +172,15 @@ def make_core(tmp_path, fake_ha, monkeypatch):
             notification_channels=[],
             # Never touch Gmail or Windows Credential Manager from tests.
             mail_provider=mail_provider if mail_provider is not None else FakeMailProvider(signed_in=False),
+            # Never read the real Start menu, touch the real desktop or run PowerShell from a test.
+            launcher=AppLauncher(cfg.computer, list_apps=lambda: list(FAKE_APPS), launch=lambda cmd: None),
+            desktop=Desktop(api=FakeDesktopAPI()),
+            file_actions=FileActions(home=tmp_path / "home", notes_folder=tmp_path / "home" / "Documents", recycle=lambda p: p.unlink()),
+            shell=shell if shell is not None else PowerShellRunner(run=_no_shell),
         )
         core.sonos._verify_timeout_s = 0.3
+        # A missing approval must fail the test quickly, not hang the whole suite.
+        core.confirmations._timeout_s = 2.0
         created.append(core)
         return core
 

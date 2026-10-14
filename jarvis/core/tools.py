@@ -38,6 +38,9 @@ class ToolContext:
     profile_id: str
     role: str
     request_id: str
+    # Names of tools in THIS turn whose output was written by someone else.
+    # Shared and mutated by the orchestrator as the turn runs.
+    tainted_by: set[str] = field(default_factory=set)
     # Set by the executor: True when this call must be simulated, not performed.
     dry_run: bool = False
 
@@ -86,6 +89,12 @@ class ToolSpec:
     risk_for_args: Callable[[dict[str, Any]], Risk] | None = None
     confirm_summary: Callable[[dict[str, Any]], str] | None = None
     tags: list[str] = field(default_factory=list)
+    # Output may contain text written by someone else (e-mail, files, clipboard,
+    # window titles). Reading it taints the turn for blocked_after_untrusted tools.
+    untrusted_output: bool = False
+    # Refused for the rest of a turn in which an untrusted_output tool has run,
+    # so text from a message can never reach a command. Enforced by the executor.
+    blocked_after_untrusted: bool = False
     # Which dry-run switch applies, when it is not the tool's own category
     # (e.g. files_open_folder is 'personal' but follows the computer dry-run).
     dry_run_category: str | None = None

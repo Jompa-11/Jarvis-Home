@@ -23,11 +23,20 @@ regenerate the lock with the command at the top of the lock file (needs `uv`), a
 
 - The server binds to loopback only (`server.host` is validated); never expose it to the LAN or internet,
   never add firewall rules or port forwards.
-- Keep dry-run on (`computer.dry_run`, `homeassistant.dry_run`) until the owner decides otherwise.
+- Computer dry-run is OFF (`computer.dry_run = false`): the owner decided on 2026-10-14 that actions on the
+  PC happen for real. Keep `homeassistant.dry_run` on until the owner says otherwise. Ordinary owner actions
+  run without asking; deleting, shutting down and PowerShell are `Risk.HIGH` and always ask.
 - Secrets live only in `.env` (git-ignored) or Windows Credential Manager — never in code, config, logs,
   commits or chat. Never print `.env`.
-- The model may only act through registered tools (`jarvis/core/tools.py`); never add a shell/exec tool.
-  New tools declare risk, category, output sensitivity and dry-run support.
+- The model may only act through registered tools (`jarvis/core/tools.py`). New tools declare risk, category,
+  output sensitivity and dry-run support.
+- ONE shell tool exists, by the owner's explicit decision on 2026-10-14: `shell_run_powershell`
+  (`jarvis/computer/shell.py`). Do not loosen any of its guards: off until `advanced_mode` is on in
+  Settings, `Risk.HIGH` so the exact command is shown and approved every single time, the owner's normal
+  user and never elevated, 60 s timeout, 4000 characters of output, every run logged, a blocklist
+  (firewall, network, Defender, ExecutionPolicy, download-and-run, .env, Credential Manager), and
+  `blocked_after_untrusted`: refused for the rest of any turn in which JARVIS read e-mail, files, the
+  clipboard, window titles or a summary. Never add a second shell/exec tool.
 - Do not spend money (Anthropic API calls) without the owner's go-ahead; Ollama is free.
 - Don't change Windows system settings, install services, or enable virtualization without asking.
 

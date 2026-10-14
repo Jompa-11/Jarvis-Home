@@ -81,9 +81,13 @@ max_volume_without_confirmation = 60
 
 # ---------------------------------------------------- Computer control ----
 [computer]
+# Actions on the PC happen for real (dry_run = true only describes them).
+dry_run = false
+# Advanced mode: JARVIS may propose a PowerShell command. It shows the exact command
+# and you approve every run. Can also be toggled in Settings.
+advanced_mode = false
 # enabled: omit for automatic (on for Windows, off on Linux / Raspberry Pi)
 # enabled = true
-dry_run = true                 # describe actions instead of performing them
 
 [computer.allowed_apps.notepad]
 command = ["notepad.exe"]

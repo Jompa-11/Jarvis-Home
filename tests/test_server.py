@@ -99,4 +99,8 @@ def test_tools_listing(client):
     tools = {t["name"]: t for t in client.get("/api/tools", headers=H).json()}
     assert tools["computer_list_windows"]["output_sensitivity"] == "personal"
     assert tools["sonos_announce"]["risk"] == "medium"
-    assert not any("shell" in n or "exec" in n for n in tools)
+    # The owner asked for an advanced mode. It exists, but only HIGH risk, confirmed
+    # every time, and refused once the turn has read anything from outside.
+    shells = [n for n in tools if "shell" in n or "exec" in n]
+    assert shells == ["shell_run_powershell"]
+    assert tools["shell_run_powershell"]["risk"] == "high"

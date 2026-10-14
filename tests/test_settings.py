@@ -9,7 +9,7 @@ def test_safe_defaults_from_config(tmp_path):
     from jarvis.config import JarvisConfig
 
     st = SettingsStore(JarvisConfig(data_dir=tmp_path), None).current
-    assert st.dry_run_computer is True and st.dry_run_smart_home is True
+    assert st.dry_run_computer is False and st.dry_run_smart_home is True  # computer acts for real
     assert st.microphone_enabled is False and st.camera_enabled is False
 
 

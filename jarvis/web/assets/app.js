@@ -215,6 +215,7 @@
     $("set-mic").checked = st.microphone_enabled;
     $("set-camera").checked = st.camera_enabled;
     $("set-speak").checked = st.speak_replies;
+    $("set-advanced").checked = st.advanced_mode;
   }
 
   function renderConfirmations(s) {
@@ -620,6 +621,7 @@
   const bindToggle = (id, key) => $(id).addEventListener("change", (e) => patch({ [key]: e.target.checked }));
   bindToggle("set-dry-computer", "dry_run_computer");
   bindToggle("set-dry-home", "dry_run_smart_home");
+  bindToggle("set-advanced", "advanced_mode");
   bindToggle("set-local-only", "local_only");
   bindToggle("set-mic", "microphone_enabled");
   bindToggle("set-camera", "camera_enabled");

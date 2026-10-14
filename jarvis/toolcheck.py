@@ -39,6 +39,12 @@ CASES: list[Case] = [
     Case("Pausa musiken i köket", frozenset({"sonos_playback"})),
     Case("Hitta min senaste faktura", frozenset({"files_search"})),
     Case("Sammanfatta dagen", frozenset({"monitor_summary_now"})),
+    Case("Öppna Spotify", frozenset({"computer_open_app"})),
+    Case("Sätt volymen på 30", frozenset({"volume_set"})),
+    Case("Pausa musiken", frozenset({"media_control"})),
+    Case("Öppna youtube", frozenset({"computer_open_web"})),
+    Case("Öppna hämtade filer", frozenset({"computer_open_folder"})),
+    Case("Lås datorn", frozenset({"power_lock"})),
     Case("Berätta ett kort skämt", frozenset()),
 ]
 

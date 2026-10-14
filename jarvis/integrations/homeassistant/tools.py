@@ -80,7 +80,8 @@ def register_sonos_tools(registry: ToolRegistry, sonos: SonosService, cfg: HomeA
         ),
         ToolSpec(
             name="sonos_playback",
-            description="Control playback on a Sonos speaker: play/resume, pause, stop, next or previous track.",
+            description=("Control playback on a Sonos SPEAKER in a named room (kitchen/köket, living room/vardagsrummet). "
+                         "Use this whenever a room is named. For music on this PC use media_control instead."),
             parameters=schema(
                 {"speaker": SPEAKER, "action": {"type": "string", "enum": ["play", "pause", "stop", "next", "previous"]}},
                 ["speaker", "action"],

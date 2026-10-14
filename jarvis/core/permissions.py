@@ -41,7 +41,9 @@ class RolePolicy:
 ALL_CATEGORIES = frozenset({"system", "smart_home", "media", "computer", "personal"})
 
 ROLE_POLICIES: dict[str, RolePolicy] = {
-    "owner": RolePolicy(ALL_CATEGORIES, Risk.HIGH, Risk.LOW),
+    # The owner's ordinary actions run without a question (auto-approve up to MEDIUM).
+    # Risk.HIGH always asks: deleting, shutting down, and PowerShell.
+    "owner": RolePolicy(ALL_CATEGORIES, Risk.HIGH, Risk.MEDIUM),
     "adult": RolePolicy(frozenset({"system", "smart_home", "media", "computer"}), Risk.MEDIUM, Risk.LOW),
     "child": RolePolicy(frozenset({"system", "media"}), Risk.LOW, Risk.LOW),
     "guest": RolePolicy(frozenset({"system", "media"}), Risk.READ, Risk.READ),

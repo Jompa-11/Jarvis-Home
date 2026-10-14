@@ -211,8 +211,12 @@ class ComputerConfig(BaseModel):
     # None = automatic: on for Windows, off elsewhere (for example on a
     # Raspberry Pi backend, where there is no desktop to control).
     enabled: bool | None = None
-    # Dry-run is on by default: actions are described, not performed.
-    dry_run: bool = True
+    # The owner asked for actions to happen for real, so dry-run is OFF by default.
+    # Turn it back on here or in Settings to have actions only described.
+    dry_run: bool = False
+    # Advanced mode (running a PowerShell command) is off until the owner turns
+    # it on in Settings. Every run still shows the exact command and is confirmed.
+    advanced_mode: bool = False
     allowed_apps: dict[str, AppEntry] = Field(default_factory=_default_apps)
 
 

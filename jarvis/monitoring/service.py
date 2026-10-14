@@ -222,6 +222,7 @@ def register_monitor_tools(registry: "ToolRegistry", monitor: MonitorService) ->
             Risk.READ,
             "personal",
             output_sensitivity="personal",
+            untrusted_output=True,  # notification titles contain senders and file names
         )
     )
 
@@ -243,5 +244,6 @@ def register_monitor_tools(registry: "ToolRegistry", monitor: MonitorService) ->
             Risk.LOW,
             "personal",
             output_sensitivity="personal",
+            untrusted_output=True,
         )
     )

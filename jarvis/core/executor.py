@@ -112,6 +112,18 @@ class ToolExecutor:
         ex.summary = spec.describe_call(args)
         ex.sensitivity = spec.output_sensitivity
 
+        # 2a. A turn that has read someone else's text may not run commands.
+        if spec.blocked_after_untrusted and ctx.tainted_by:
+            read = ", ".join(sorted(ctx.tainted_by))
+            return self._finish(
+                ex,
+                ToolResult(ok=False, error=(
+                    f"Blockerat: JARVIS har redan läst data utifrån i den här frågan ({read}). "
+                    "Avancerat läge är avstängt resten av frågan. Be om kommandot i ett nytt meddelande."
+                )),
+                status="denied",
+            )
+
         # 2. Permission policy
         verdict = self.policy.evaluate(ctx.role, spec, args)
         ex.risk = verdict.risk.name.lower()

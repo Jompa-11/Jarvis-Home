@@ -20,7 +20,7 @@ def spec(risk, category="media", risk_for_args=None):
     [
         ("owner", Risk.READ, "media", Decision.ALLOW),
         ("owner", Risk.LOW, "media", Decision.ALLOW),
-        ("owner", Risk.MEDIUM, "computer", Decision.CONFIRM),
+        ("owner", Risk.MEDIUM, "computer", Decision.ALLOW),  # ordinary owner actions run straight away
         ("owner", Risk.HIGH, "computer", Decision.CONFIRM),
         ("adult", Risk.HIGH, "computer", Decision.DENY),
         ("child", Risk.LOW, "media", Decision.ALLOW),
@@ -36,9 +36,15 @@ def test_policy_matrix(role, risk, category, expected):
 
 
 def test_argument_dependent_risk_escalates():
-    s = spec(Risk.LOW, risk_for_args=lambda a: Risk.MEDIUM if a.get("level", 0) > 60 else Risk.LOW)
+    s = spec(Risk.LOW, risk_for_args=lambda a: Risk.HIGH if a.get("level", 0) > 60 else Risk.LOW)
     assert PermissionPolicy().evaluate("owner", s, {"level": 30}).decision is Decision.ALLOW
     assert PermissionPolicy().evaluate("owner", s, {"level": 90}).decision is Decision.CONFIRM
+    # An adult still has to confirm a MEDIUM action; only the owner skips that.
+    assert PermissionPolicy().evaluate("adult", spec(Risk.MEDIUM, "computer"), {}).decision is Decision.CONFIRM
+
+
+def test_high_risk_always_confirms_even_for_the_owner():
+    assert PermissionPolicy().evaluate("owner", spec(Risk.HIGH, "computer"), {}).decision is Decision.CONFIRM
 
 
 def test_tools_offered_per_role():
