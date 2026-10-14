@@ -40,3 +40,35 @@ async def test_toolcheck_skips_unavailable_tools(tmp_path, monkeypatch):
     prompts = {r.case.prompt for r in results}
     assert "Öppna anteckningar" not in prompts and "Vad är klockan?" in prompts
     assert len(CASES) > len(results)
+
+
+def test_reply_has_time_accepts_only_the_correct_time():
+    from datetime import datetime
+
+    from jarvis.toolcheck import reply_has_time
+
+    start, end = datetime(2026, 10, 14, 12, 22, 30), datetime(2026, 10, 14, 12, 22, 50)
+    assert reply_has_time("Klockan är 12:22.", start, end)
+    assert reply_has_time("Den är 12.23 nu", start, end)  # +1 min
+    assert reply_has_time("Klockan är 12:21", start, end)  # -1 min
+    assert not reply_has_time("Klockan är 12:25", start, end)
+    assert not reply_has_time("Klockan är 13:22", start, end)
+    assert not reply_has_time("Jag vet inte.", start, end)
+    assert not reply_has_time("Kod 112:22", start, end)
+    midnight = datetime(2026, 10, 14, 23, 59, 40), datetime(2026, 10, 15, 0, 0, 5)
+    assert reply_has_time("00:00", *midnight) and reply_has_time("23:59", *midnight)
+
+
+async def test_clock_case_passes_with_correct_time_from_context(tmp_path):
+    from datetime import datetime
+
+    def answer(messages):
+        return f"Klockan är {datetime.now():%H:%M}."
+
+    ollama = ScriptedProvider("ollama", "local", [answer, "Klockan är 03:07."])
+    case = next(c for c in CASES if c.prompt == "Vad är klockan?")
+    results = await run_toolcheck(make_config(tmp_path), providers={"ollama": ollama}, cases=[case, case])
+    assert results[0].passed and results[0].via_context and results[0].called == []
+    assert "correct time from context" in format_report(results, "m")
+    # A wrong time does not pass (unless it happens to be 03:07 right now).
+    assert results[1].passed is (datetime.now().strftime("%H:%M") in {"03:06", "03:07", "03:08"})

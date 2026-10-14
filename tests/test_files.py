@@ -224,8 +224,8 @@ def test_open_folder_only_for_indexed_files_and_never_the_file(tmp_path, monkeyp
     fw.index.replace_all(scan(fw.roots, max_depth=8, max_files=100)[0])
 
     dry = fw.open_folder(str(f), dry_run=True)
-    assert dry["would_run"] == ["explorer.exe", "/select,", str(f)] and dry["folder"] == "Hämtade filer\\sub"
-    assert fw.open_folder("testfaktura.pdf", dry_run=True)["would_run"][2] == str(f)  # by name, from the index
+    assert dry["would_run"].endswith(f'explorer.exe" /select,"{f}"') and dry["folder"] == "Hämtade filer\\sub"
+    assert fw.open_folder("testfaktura.pdf", dry_run=True)["would_run"] == dry["would_run"]  # by name, from the index
     with pytest.raises(ValueError, match="not in the index"):
         fw.open_folder(str(other), dry_run=True)
     with pytest.raises(ValueError, match="not in the index"):
@@ -235,7 +235,37 @@ def test_open_folder_only_for_indexed_files_and_never_the_file(tmp_path, monkeyp
     monkeypatch.setattr(watcher_mod.subprocess, "Popen", lambda cmd, **k: launched.append(cmd))
     monkeypatch.setattr(watcher_mod.sys, "platform", "win32")
     assert fw.open_folder(str(f), dry_run=False)["opened"] is True
-    assert launched == [["explorer.exe", "/select,", str(f)]]  # Explorer selects the file; it is not opened
+    assert launched == [dry["would_run"]]  # one ready string; Explorer selects the file, it is not opened
+
+
+@pytest.mark.parametrize("name", ["faktura, kopia 2.pdf", "a.pdf,evil.exe", "a.pdf, ,select,x.exe .pdf", "två  mellanslag , och,komma.pdf"])
+def test_open_folder_quotes_commas_and_spaces(tmp_path, name):
+    w = tmp_path / "w"
+    f = touch(w / name)
+    fw, _ = make_watcher(tmp_path, w)
+    fw.index.replace_all(scan(fw.roots, max_depth=8, max_files=100)[0])
+    cmd = fw.open_folder(str(f), dry_run=True)["would_run"]
+    # The whole path sits inside ONE pair of quotes right after "/select,".
+    assert cmd.endswith(f'/select,"{f}"') and cmd.count('"') == 4
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        argc = ctypes.c_int()
+        fn = ctypes.windll.shell32.CommandLineToArgvW
+        fn.restype = ctypes.POINTER(wintypes.LPWSTR)
+        argv = fn(cmd, ctypes.byref(argc))
+        args = [argv[i] for i in range(argc.value)]
+        ctypes.windll.kernel32.LocalFree(argv)
+        assert args[1:] == [f"/select,{f}"]  # exactly one argument, commas and spaces included
+
+
+@pytest.mark.parametrize("bad", ['C:\\x\\a".pdf', "C:\\x\\a\n.pdf", "relativ\\fil.pdf"])
+def test_explorer_command_refuses_unsafe_paths(bad):
+    from jarvis.files.watcher import explorer_select_command
+
+    with pytest.raises(ValueError):
+        explorer_select_command(bad)
 
 
 # ------------------------------------------------------------- tools / core ----

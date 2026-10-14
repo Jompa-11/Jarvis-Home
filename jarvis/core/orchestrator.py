@@ -16,6 +16,7 @@ from typing import Any
 from ..config import SENSITIVITY_ORDER, JarvisConfig
 from ..providers.base import ChatMessage
 from ..providers.router import NoProviderAvailable, ProviderRouter, categorize
+from .tool_select import select_tools
 from ..rules import RulesConfig, build_preferences_section
 from .conversation import Conversation
 from .events import EventBus
@@ -162,7 +163,10 @@ class Orchestrator:
         if self.conversation.profile_id != profile.id:
             self.reset_conversation()
 
-        tools = self.policy.tools_for_role(profile.role, self.registry.all())
+        # Only the tool groups this request is about are SHOWN to the model, chosen once
+        # for the whole turn. The executor still checks every call against the full
+        # registry and the role's permissions.
+        tools, tool_groups = select_tools(text, self.policy.tools_for_role(profile.role, self.registry.all()))
         category = categorize(text)
         context = "\n".join(
             [
@@ -250,6 +254,7 @@ class Orchestrator:
             "request_id": request_id,
             "text": final_text,
             "category": category,
+            "tool_groups": sorted(tool_groups) if tool_groups else "all",
             "provider": last.get("provider"),
             "model": last.get("model"),
             "is_fallback": any(p["is_fallback"] for p in providers_used),

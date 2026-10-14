@@ -201,15 +201,31 @@ class FileWatcher:
             raise ValueError("That path is outside the watched folders.")
         if not os.path.isfile(rec.path):
             raise ValueError("The file no longer exists at that place.")
-        # "/select," opens the containing folder with the file highlighted. The file itself is never opened.
-        cmd = ["explorer.exe", "/select,", rec.path]
+        cmd = explorer_select_command(rec.path)
         data = {"folder": _where(rec), "file": rec.name}
         if dry_run:
             return {**data, "would_run": cmd}
         if sys.platform != "win32":
             raise ValueError("Opening folders is only available on Windows.")
-        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)  # noqa: S603 - fixed program, indexed path
+        # A ready command string (not a list): CreateProcess gets exactly this text.
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)  # noqa: S603 - fixed program, quoted indexed path
         return {**data, "opened": True}
+
+
+def explorer_select_command(path: str) -> str:
+    """explorer.exe /select,"<path>": opens the containing folder with the file highlighted.
+
+    File names in Downloads can be chosen by others, and explorer.exe splits its
+    arguments on commas. The path is therefore always inside one pair of quotes,
+    and anything that could end the quotes or the line is refused. The file
+    itself is never opened.
+    """
+    if not os.path.isabs(path):
+        raise ValueError("Only absolute paths can be shown in File Explorer.")
+    if '"' in path or any(ord(c) < 32 for c in path):
+        raise ValueError("That path contains characters that cannot be passed safely to File Explorer.")
+    explorer = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "explorer.exe")
+    return f'"{explorer}" /select,"{path}"'
 
 
 def _inside(path: str, root: "Path") -> bool:
