@@ -86,6 +86,9 @@ class ToolSpec:
     risk_for_args: Callable[[dict[str, Any]], Risk] | None = None
     confirm_summary: Callable[[dict[str, Any]], str] | None = None
     tags: list[str] = field(default_factory=list)
+    # Which dry-run switch applies, when it is not the tool's own category
+    # (e.g. files_open_folder is 'personal' but follows the computer dry-run).
+    dry_run_category: str | None = None
 
     def __post_init__(self) -> None:
         if not TOOL_NAME_RE.match(self.name):

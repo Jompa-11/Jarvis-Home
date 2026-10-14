@@ -135,7 +135,9 @@
     list.appendChild(statusRow("na", "Camera", "No camera module installed (Phase 3)", "Off"));
 
     const mon = s.monitoring;
-    if (mon) {
+    if (mon && mon.restricted) {
+      list.appendChild(statusRow("off", "Bevakning", mon.detail, "Bara ägaren", ""));
+    } else if (mon) {
       const active = Object.values(mon.sources || {}).filter((v) => v.state === "active").length;
       const [mdot, mval, mcls] = mon.paused ? ["warn", "Pausad", "warn"] : mon.muted ? ["warn", "Tystad", "warn"] : ["ok", "Aktiv", "ok"];
       list.appendChild(statusRow(mdot, "Bevakning", `${active} källa/källor · kanaler: ${(mon.channels || []).map((c) => c.name).join(", ") || "inga"}`, mval, mcls));
@@ -253,8 +255,20 @@
   function renderMonitoring(m) {
     if (!m) return;
     const st = $("mon-state");
-    st.textContent = m.paused ? "Bevakning: pausad" : m.muted ? "Bevakning: aktiv (tystad)" : "Bevakning: aktiv";
-    st.className = "mon-state" + (m.paused || m.muted ? " paused" : "");
+    // Other profiles than the owner see no notifications, summary or controls.
+    document.querySelectorAll(".mon-controls .btn").forEach((b) => (b.hidden = !!m.restricted));
+    if (m.restricted) {
+      st.textContent = "Bevakning: bara ägaren";
+      st.className = "mon-state off";
+      $("mon-meta").textContent = m.detail;
+      $("notify-list").replaceChildren();
+      $("notify-empty").hidden = true;
+      renderSummary(null);
+      return;
+    }
+    const gaming = m.gaming && m.gaming.active;
+    st.textContent = m.paused ? "Bevakning: pausad" : m.muted ? "Bevakning: aktiv (tystad)" : gaming ? "Bevakning: aktiv · Spelläge: på" : "Bevakning: aktiv";
+    st.className = "mon-state" + (m.paused || m.muted || gaming ? " paused" : "");
     $("btn-mon-pause").textContent = m.paused ? "Återuppta" : "Pausa";
     $("btn-mon-mute").textContent = m.muted ? "Sluta tysta" : "Tysta 1 h";
     const watching = Object.entries(m.sources || {}).filter(([, v]) => v.state === "active").map(([k]) => k);
@@ -264,6 +278,8 @@
       `Sammanfattning ${m.morning_summary_time}`,
     ];
     if (m.waiting_for_summary) parts.push(`${m.waiting_for_summary} väntar`);
+    const g = m.gaming || {};
+    if (g.enabled) parts.unshift(g.active ? `Spelläge: på (${g.reason})` : "Spelläge: av");
     if (m.muted && m.muted_until) parts.push(`tystad till ${new Date(m.muted_until * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
     $("mon-meta").textContent = parts.join(" · ");
     const list = $("notify-list");
@@ -282,6 +298,34 @@
       list.appendChild(li);
     }
     $("notify-empty").hidden = (m.recent || []).length > 0;
+    renderSummary(m.summary);
+  }
+
+  // The latest summary stays visible until it is acknowledged.
+  function renderSummary(s) {
+    const card = $("summary-card");
+    card.replaceChildren();
+    if (!s || s.acknowledged) { card.hidden = true; return; }
+    card.hidden = false;
+    const head = el("div", "summary-head");
+    head.appendChild(el("strong", null, s.title));
+    head.appendChild(el("span", null, fmtTime(s.created_at)));
+    card.appendChild(head);
+    const section = (label, lines) => {
+      if (!lines.length) return;
+      card.appendChild(el("div", "summary-label", label));
+      const ul = el("ul", "summary-list");
+      for (const line of lines) ul.appendChild(el("li", null, line));
+      card.appendChild(ul);
+    };
+    section("Viktiga mejl", s.mail || []);
+    const files = s.files || { count: 0, top: [] };
+    if (files.count) section(`Nya filer (${files.count})`, files.top || []);
+    section("Det som väntat", (s.waited || []).map((w) => `${w.time} ${w.title}`));
+    const ack = el("button", "btn", "Kvittera");
+    ack.type = "button";
+    ack.addEventListener("click", () => api("/api/notifications/ack", { method: "POST", body: JSON.stringify({ id: s.notification_id }) }).catch((e) => toast(e.message, "err")));
+    if (s.notification_id) card.appendChild(ack);
   }
 
   $("btn-mon-pause").addEventListener("click", () => {
@@ -293,6 +337,14 @@
     api("/api/notifications/mute", { method: "POST", body: JSON.stringify({ minutes: muted ? 0 : 60 }) }).then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } }).catch((e) => toast(e.message, "err"));
   });
   $("btn-mon-ack").addEventListener("click", () => api("/api/notifications/ack", { method: "POST", body: JSON.stringify({}) }).catch((e) => toast(e.message, "err")));
+  $("btn-mon-summary").addEventListener("click", () => {
+    const b = $("btn-mon-summary");
+    b.disabled = true;
+    api("/api/monitoring/summary", { method: "POST", body: JSON.stringify({}) })
+      .then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } })
+      .catch((e) => toast(e.message, "err"))
+      .finally(() => { b.disabled = false; });
+  });
 
   function renderAll() {
     const s = ui.state;

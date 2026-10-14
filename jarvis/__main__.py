@@ -136,6 +136,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "toolcheck":
         from .toolcheck import format_report, run_toolcheck
 
+        from .monitoring.gaming import GamingDetector
+
+        # Same check as game mode: never load the GPU while a game runs (results would be timeouts anyway).
+        busy = GamingDetector(cfg.gaming).check_now()
+        if busy:
+            print(f"Game mode is on ({busy}): not running the tool-use check now. Try again when the game is closed.")
+            return 3
         model = args.model or cfg.ollama.model
         print(f"Running tool-use check against Ollama model '{model}' (dry-run; nothing is changed)...")
         results = asyncio.run(run_toolcheck(cfg, model=model))

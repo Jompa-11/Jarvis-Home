@@ -29,10 +29,12 @@ from .providers.dev_provider import DevProvider
 from .providers.ollama_provider import OllamaProvider
 from .providers.router import ProviderRouter
 from .providers.usage import UsageTracker
+from .files.watcher import FileWatcher, register_file_tools
 from .mail.base import MailProvider
 from .mail.gmail import GmailProvider
 from .mail.watcher import MailWatcher, register_mail_tools
 from .monitoring.channels import UIChannel, WindowsToastChannel
+from .monitoring.gaming import GamingDetector, GamingMode
 from .monitoring.notifier import NotificationChannel
 from .monitoring.service import MonitorService, register_monitor_tools
 from .rules import RulesConfig, load_rules, register_rules_tools
@@ -86,9 +88,14 @@ class JarvisCore:
             lambda: self.rules,
             channels=notification_channels,
             state_path=data / "monitor_state.json" if data else None,
-            on_change=lambda: self.bus.publish("monitoring", self.monitor.snapshot()),
+            on_change=lambda: self.bus.publish("monitoring", self.monitoring_view()),
         )
         self.monitor.notifier.paused = self.settings.current.monitoring_paused
+        # Game mode: no background model calls while a game runs or the GPU is busy.
+        self.gaming = GamingMode(
+            GamingDetector(cfg.gaming), on_start=self._gaming_started, on_end=self._gaming_ended, on_change=self.monitor._changed
+        )
+        self.monitor.gaming = self.gaming
 
         self.registry = ToolRegistry()
         register_system_tools(self.registry, self)
@@ -99,8 +106,18 @@ class JarvisCore:
             provider = mail_provider if mail_provider is not None else GmailProvider(query=cfg.mail.query)
             # Mail is classified by the LOCAL model only: the Ollama provider object itself,
             # never the router, so routes or cloud providers can never be used for mail.
-            self.mail = MailWatcher(cfg.mail, provider, self.monitor, lambda: self.rules, lambda: self.router.providers.get("ollama"))
+            self.mail = MailWatcher(
+                cfg.mail, provider, self.monitor, lambda: self.rules, lambda: self.router.providers.get("ollama"), is_gaming=lambda: self.gaming.active
+            )
             register_mail_tools(self.registry, self.mail)
+            self.monitor.add_digest("mail", self.mail.important_since)
+        self.files: FileWatcher | None = None
+        if cfg.files.enabled:
+            # Metadata-only index of the watched folders (data/files.db); contents are never read.
+            self.files = FileWatcher(cfg.files, self.monitor, lambda: self.rules, data / "files.db" if data else None)
+            # Opening Explorer is desktop control: only where computer control is enabled.
+            register_file_tools(self.registry, self.files, allow_open=self.windows.enabled)
+            self.monitor.add_digest("files", self.files.take_new)
         register_sonos_tools(self.registry, self.sonos, cfg.homeassistant)
         if self.windows.enabled:
             # Desktop control is platform-specific; a headless backend (e.g. a
@@ -119,7 +136,7 @@ class JarvisCore:
         self._state_watch: asyncio.Task | None = None
 
     def _default_channels(self) -> list[NotificationChannel]:
-        channels: list[NotificationChannel] = [UIChannel(self.bus.publish)]
+        channels: list[NotificationChannel] = [UIChannel(self._publish_if_owner)]
         want_windows = self.cfg.monitoring.windows_notifications
         if want_windows is None:
             want_windows = sys.platform == "win32"
@@ -129,6 +146,30 @@ class JarvisCore:
             except RuntimeError as exc:
                 log.info("Windows notifications unavailable: %s", exc)
         return channels
+
+    # -- owner-only views -------------------------------------------------------
+    def owner_active(self) -> bool:
+        profile = self.cfg.profile(self.settings.current.active_profile)
+        return profile is not None and profile.role == "owner"
+
+    def monitoring_view(self) -> dict[str, Any]:
+        """Notifications and the summary are personal: only shown for the owner profile."""
+        if self.owner_active():
+            return self.monitor.snapshot()
+        return {"restricted": True, "detail": "Notiser och sammanfattning visas bara för ägarprofilen."}
+
+    def _publish_if_owner(self, event: str, data: dict[str, Any]) -> None:
+        if self.owner_active():
+            self.bus.publish(event, data)
+
+    async def _gaming_started(self) -> None:
+        ollama = self.router.providers.get("ollama")
+        if ollama is not None and hasattr(ollama, "unload"):
+            await ollama.unload()  # give the GPU back to the game
+
+    async def _gaming_ended(self) -> None:
+        if self.mail is not None and self.mail.waiting:
+            await self.mail.classify_waiting()
 
     def _privacy(self) -> PrivacyConfig:
         st = self.settings.current
@@ -141,10 +182,16 @@ class JarvisCore:
         self._state_watch = asyncio.create_task(self._push_state_after_actions(), name="jarvis-state-watch")
         if self.cfg.monitoring.enabled:
             await self.monitor.start()
+            if self.cfg.gaming.enabled:
+                await self.gaming.poll()  # before the first mail check, so a running game is respected
+                self.monitor.scheduler.every("gaming", self.cfg.gaming.check_seconds, self.gaming.poll)
             if self.mail is not None:
                 self.mail._publish_state()
                 if self.mail.provider.signed_in():
                     self.monitor.scheduler.every("mail", self.cfg.mail.poll_minutes * 60, self.mail.poll, run_now=True)
+            if self.files is not None:
+                # Runs as a background job; the scan itself is in a worker thread.
+                self.monitor.scheduler.every("files", self.cfg.files.refresh_minutes * 60, self.files.refresh, run_now=True)
         log.info("JARVIS core started")
 
     async def stop(self) -> None:
@@ -152,6 +199,8 @@ class JarvisCore:
         await self.monitor.stop()
         if self.mail is not None:
             await self.mail.provider.aclose()
+        if self.files is not None:
+            self.files.index.close()
         for task in (self._bg, self._state_watch):
             if task:
                 task.cancel()
@@ -245,7 +294,7 @@ class JarvisCore:
                 "sonos": {"state": sonos_state, "detail": sonos_detail, "speakers": speakers},
             },
             "voice": self.voice.status(),
-            "monitoring": self.monitor.snapshot(),
+            "monitoring": self.monitoring_view(),
             "camera": {"state": "not_implemented", "master_switch": "on" if st.camera_enabled else "off"},
             "computer": {**self.windows.status(), "dry_run": st.dry_run_computer},
             "settings": st.model_dump(),

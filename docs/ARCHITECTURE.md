@@ -22,6 +22,10 @@
   Home Assistant      Windows control     System tools
   (REST, allowlist)   (allowlisted apps,  (time, status)
   └─ Sonos service     window focus)
+
+ Monitoring (jarvis/monitoring): scheduler · notifier · channels · summary
+   ├─ Mail (jarvis/mail): Gmail read-only → rules → local model only
+   └─ Files (jarvis/files): metadata index of watched folders
 ```
 
 ## Layers
@@ -32,7 +36,14 @@ displays what the server reports: if no voice engine exists, the microphone show
 
 **B. Core** — `jarvis/core/orchestrator.py` runs one turn: append the user message, ask the router for a
 model response, and pass each proposed tool call to the executor. Actual results go back to the model,
-up to `ai.max_tool_rounds`. The model never executes anything. It can only name a registered tool with
+up to `ai.max_tool_rounds`. The model never executes anything.
+
+**Tool selection per request** (`jarvis/core/tool_select.py`). Small local models choose tools worse the
+more tools they see, so each turn shows the model only the tool groups that free keyword rules find in the
+request: `computer`, `files`, `mail`, `monitor`, `smart_home`, plus `system` (time, status, `rules_show`),
+which is always included. If nothing is recognised, every tool is shown. The selection is made once per turn
+and kept for all its rounds. It only narrows what the model *sees*: the executor still validates every call
+against the full registry, the role's permissions, confirmation and dry-run. It can only name a registered tool with
 JSON arguments, and those arguments are validated against that tool's JSON schema (`additionalProperties: false`).
 
 **C. Hybrid AI** — `jarvis/providers`. `AIProvider` has two methods (`health`, `complete`) over neutral
@@ -85,12 +96,49 @@ inject markup. The model cannot reach this path: it has no tool that creates not
 script, its arguments and the app id are constants. A test asserts that hostile text never appears in
 the process arguments.
 
+**The summary** (`MonitorService.morning_summary`) runs daily at `morning_summary_time` and on demand
+(the **Sammanfatta nu** button, `POST /api/monitoring/summary`, or the `monitor_summary_now` tool, risk LOW).
+Since the previous summary it collects: important mail, one sentence each (from the mail watcher's
+in-memory list); new files, the count plus the five most important names (rule matches first, then
+newest); and everything that waited (quiet hours, normal and low priority). Sources plug in with
+`MonitorService.add_digest`. The result is one notification plus a card in the UI that stays until it is
+acknowledged. Nothing of it is written to disk.
+
+**G. Files** — `jarvis/files`. `FileWatcher` rescans the watched folders (`[files] watched_folders`, default
+the Windows Known Folders Downloads and Documents) every `refresh_minutes` in a worker thread, so the event
+loop never waits. The index (`data/files.db`, SQLite) holds only name, path, extension, size and modified
+time: scanning uses directory listings and `stat()` and never opens a file. Skipped: secret-looking names
+(`.env*`, `*.key`, `*.pem`, `*.pfx`, `*.p12`, `*.kdbx`, `*.ovpn`, `id_rsa*`, `id_ed25519*`, names with
+password/lösenord/credential), folders `.ssh`, `.git`, `node_modules`, `AppData`, hidden and system entries,
+unfinished downloads, and every symlink, junction or other reparse point except OneDrive cloud placeholders
+(which are not links, and `stat()` never downloads them). Limits: `max_depth`, `max_files`.
+
+The first scan is a silent baseline. Later, a new file whose name contains a word from
+`rules.toml [files] important_keywords` gives a `high` notification; other new files are `low` and wait for
+the summary. Each file is announced at most once (hashed key in the seen store); large batches are grouped.
+
+Tools: `files_search` (READ, `personal`): words in the name, optional type and period, at most 20 results,
+newest first, and the result always says that only the watched folders were searched. `files_open_folder`
+(MEDIUM, category `computer`, dry-run, confirmation): only for a file in the index and inside a watched
+folder; runs one fixed command string `"%SystemRoot%\explorer.exe" /select,"<path>"` without a shell, so
+commas or spaces in a file name cannot become extra arguments (paths containing `"` or control characters
+are refused). It highlights the file in File Explorer and never opens the file itself.
+
+**Game mode** (`jarvis/monitoring/gaming.py`). Every `check_seconds` the process list (`tasklist`) and
+the GPU load (`nvidia-smi`) are read in a worker thread. Game mode is on while a process from
+`[gaming] process_names` runs, or after the GPU has stayed above `gpu_threshold_percent` for
+`gpu_high_minutes`. Turning on unloads every loaded Ollama model (`keep_alive: 0`). While it is on, the mail
+watcher still notifies rule matches (no model needed) but keeps other mail in memory instead of calling the
+local model; it is classified when game mode ends. `python -m jarvis toolcheck` uses the same check and
+refuses to run during a game.
+
 ## Safety model
 
 | Concern | Mechanism |
 |---|---|
 | Model text becoming commands | Only registered tools; JSON-schema validation; no shell tool exists |
 | Over-reach | Roles (owner/adult/child/guest) → allowed categories + max risk; tools a role can't use aren't even offered |
+| Personal data | Category `personal` (mail, files, notifications, summary, rules) belongs to the owner role only; the notification and summary API answer 403 and the UI shows "bara ägaren" for other profiles |
 | Consequential actions | Risk ≥ MEDIUM (or above the role's auto-approve level) → explicit UI confirmation; timeout = deny; cancelling a turn denies its pending confirmations |
 | Destructive actions | `Risk.HIGH`: always confirmed, owner only (none exist yet) |
 | Prompt injection via tool output | System prompt treats tool output as data; approvals come only from the local UI, never from a tool |
@@ -98,6 +146,8 @@ the process arguments.
 | Secrets | Env vars / `.env` / Windows Credential Manager; never in config; every secret read is registered with the log redactor; pattern redaction for tokens/keys |
 | Sensitive data to cloud | Tool outputs have a sensitivity (`normal`/`personal`/`restricted`); above `cloud_max_sensitivity` they are replaced with a "withheld" notice for cloud providers only |
 | Retention | Conversations in memory only; logs contain no message text by default; usage file stores counts only; monitoring stores hashes of notified event keys and times only |
+| Files | Metadata only, never contents; secrets, system folders and links skipped; only indexed files can be shown in Explorer, never opened; quoted fixed command |
+| Tool selection | Narrows only what the model sees; every call is still validated against the full registry and permissions |
 | Notifications | No model tool can send them; fixed templates; one-time codes masked; Windows notification text passed only as environment variables and XML-escaped by a fixed script |
 | Identity | Profiles scope permissions but are *not* authentication. Voice/face identity (future) will be a hint, never authorization |
 

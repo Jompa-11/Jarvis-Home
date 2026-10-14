@@ -41,17 +41,27 @@ regenerate the lock with the command at the top of the lock file (needs `uv`), a
 - `jarvis/computer/` Windows-only control (allowlisted apps, window focus); registered only on Windows,
   so the backend runs unchanged on Linux/Raspberry Pi.
 - `jarvis/web/` UI; shows only real backend state. `tests/fake_ha.py` is a fake Home Assistant.
+- `jarvis/monitoring/` scheduler, notifier (priorities, quiet hours), channels, summary, game mode.
+  `jarvis/mail/` Gmail read-only (rules first, local model only). `jarvis/files/` metadata-only file index.
+- `jarvis/core/tool_select.py` shows the model only the tool groups a request is about (security unchanged:
+  the executor checks every call against the full registry). Personal tools (mail, files, notifications,
+  summary, rules) are category `personal`: owner role only.
 
-## Status (2026-10-12)
+## Status (2026-10-14)
 
-- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 131 tests pass; Ollama `qwen2.5:7b` runs 100% on
+- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 340 tests pass; Ollama `qwen2.5:7b` runs 100% on
   GPU with `num_ctx` 8192.
-- Resolved: `qwen2.5:7b` used to answer "which programs can you start?" from memory (invented Paint/Word).
-  After PR #3 (grounding rules, app enum, temperature 0.2), `toolcheck` with `qwen2.5:7b` passes 8/8 and
-  that question now calls `computer_list_apps`. No model change needed. First request after load takes
-  ~40 s (model loading onto GPU); later ones 2–12 s.
+- Merged: monitoring + rules (PR #8), Gmail read-only monitoring is signed in and active.
+- PR #9 (draft, not merged): file search + folder watching (Hämtade filer/Dokument via Known Folders), morning
+  summary + "Sammanfatta nu", per-request tool selection, owner-only personal tools, game mode
+  (`cs2.exe` or GPU > 85 % for 2 min: no background Ollama calls, model unloaded).
+- `toolcheck` (qwen2.5:7b, 3 runs each): step 4 alone 6–7/8 (more tools made qwen skip `computer_list_apps`
+  and answer the time from context); with tool selection 8/8 ×3; with step 5 (10 cases) 10, 10, 9/10;
+  final run 10/10. Small models are sensitive to the number of tools: measure with `toolcheck` after adding
+  tools. `toolcheck` refuses to run during game mode (results would be GPU timeouts).
+- Voice (PR #6, #7) is paused as drafts; monitoring must not depend on it.
 - Not configured yet: Claude API key (owner must set a spend limit in the Anthropic Console first),
-  Home Assistant + Sonos (planned on the Raspberry Pi).
+  Home Assistant + Sonos (planned on the Raspberry Pi), phone notifications (Discord webhook, own branch later).
 
 ## Git workflow
 

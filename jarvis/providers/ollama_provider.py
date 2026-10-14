@@ -92,6 +92,19 @@ class OllamaProvider(AIProvider):
             model=model,
         )
 
+    async def unload(self) -> bool:
+        """Free the GPU: unload every loaded model now (keep_alive 0). Never raises."""
+        try:
+            r = await self._client.get("/api/ps", timeout=5.0)
+            loaded = [m["name"] for m in r.json().get("models", [])] if r.status_code == 200 else [self._cfg.model]
+            ok = True
+            for name in loaded:
+                r = await self._client.post("/api/generate", json={"model": name, "keep_alive": 0}, timeout=10.0)
+                ok = ok and r.status_code == 200
+            return ok
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            return False
+
     async def aclose(self) -> None:
         await self._client.aclose()
 

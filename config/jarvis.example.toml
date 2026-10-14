@@ -122,6 +122,32 @@ max_per_poll = 20
 initial_lookback_hours = 12      # how far back the first check after start looks
 query = "in:inbox"               # Gmail search filter, e.g. "in:inbox -category:promotions"
 
+# -------------------------------------------------------------- Files ----
+# Watched folders. JARVIS indexes ONLY metadata (name, path, type, size, modified
+# time) and never reads file contents. Secret-looking files (.env, *.key, *.pem,
+# *.pfx, *.kdbx, *.ovpn, id_rsa*, password files), the folders .ssh/.git/
+# node_modules/AppData, hidden/system files and links/junctions are skipped.
+# The index lives in data/files.db. Important file names are set in rules.toml [files].
+[files]
+enabled = true
+# "known:Downloads" and "known:Documents" follow the Windows Known Folders
+# (Hämtade filer, Dokument), wherever they are. Other entries are folder paths.
+watched_folders = ["known:Downloads", "known:Documents"]
+max_depth = 8
+max_files = 50000
+refresh_minutes = 15
+
+# ------------------------------------------------------------ Gaming ----
+# Game mode: while one of these programs runs, or the GPU stays above the
+# threshold, JARVIS makes no background calls to the local model and unloads
+# it from the GPU. Mail that needs the model waits until the game closes;
+# mail matching your rules is still notified at once. Local and free.
+[gaming]
+enabled = true
+process_names = ["cs2.exe"]      # add more, e.g. "valorant.exe", "eldenring.exe"
+gpu_threshold_percent = 85       # 100 = only the process list
+gpu_high_minutes = 2
+
 # ------------------------------------------------------------ Privacy ----
 [privacy]
 local_only = false

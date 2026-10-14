@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..config import MonitoringConfig
 from ..rules import RulesConfig
-from .notifier import Notification, NotificationChannel, Notifier, SeenStore
+from .notifier import Notification, NotificationChannel, Notifier, SeenStore, mask_codes
 from .scheduler import AsyncScheduler
 
 if TYPE_CHECKING:
@@ -50,9 +50,11 @@ class MonitorService:
         self.scheduler = AsyncScheduler(clock=clock, on_reminder=self._reminder)
         self.sources: dict[str, dict[str, Any]] = {
             "mail": {"state": "not_configured", "detail": "Gmail is added in step 3."},
-            "folders": {"state": "not_configured", "detail": "Folder watching is added in step 4."},
+            "folders": {"state": "not_configured", "detail": "Folder watching is off (config [files] enabled)."},
         }
         self.last_summary: dict[str, Any] | None = None
+        self.digests: dict[str, Callable[[float | None], Any]] = {}
+        self.gaming: Any = None  # GamingMode, set by the core
 
     def _changed(self) -> None:
         if self.on_change:
@@ -95,19 +97,76 @@ class MonitorService:
     async def _reminder(self, profile_id: str, text: str) -> None:
         await self.notifier.notify(source="reminder", title=f"Påminnelse: {text}", priority="high", kind="reminder")
 
-    async def morning_summary(self) -> Notification | None:
-        """Collect what waited (quiet hours, normal and low items) into one summary."""
-        items = self.notifier.take_summary()
+    def add_digest(self, name: str, fn: Callable[[float | None], Any]) -> None:
+        """A source that contributes to the summary: fn(since_timestamp) -> its section."""
+        self.digests[name] = fn
+
+    async def morning_summary(self, *, on_demand: bool = False) -> Notification | None:
+        """Important mail (one sentence each), new files (count + the 5 most important names)
+        and what waited (quiet hours, normal and low items), since the previous summary.
+
+        Shown as a notification and as a card in the UI until acknowledged.
+        """
         now = self.clock()
-        self.last_summary = {"created_at": now.timestamp(), "items": [i.public() for i in items]}
-        if not items:
-            title, detail = "Morgonsammanfattning: inget nytt sedan sist.", None
-        else:
-            important = sum(1 for i in items if i.priority in ("high", "urgent"))
-            title = f"Morgonsammanfattning: {len(items)} {'sak' if len(items) == 1 else 'saker'}" + (f", varav {important} viktiga" if important else "") + "."
-            detail = "; ".join(i.title for i in items[:8])
-        # Shown in the UI until acknowledged (step 5 adds reading it aloud).
-        return await self.notifier.notify(source="summary", title=title, detail=detail, priority="normal", kind="summary", dedupe_key=f"summary:{now:%Y-%m-%d %H:%M}", summarize=False)
+        since = self.last_summary["created_at"] if self.last_summary else None
+        items = self.notifier.take_summary()
+        mail: list[str] = list(self.digests["mail"](since)) if "mail" in self.digests else []
+        files: dict[str, Any] = self.digests["files"](since) if "files" in self.digests else {"count": 0, "top": []}
+        # New files are counted in their own section; important mail too, when mail is watched.
+        waited = [
+            i for i in items
+            if not ("files" in self.digests and i.source == "files") and not ("mail" in self.digests and i.source == "mail" and i.priority in ("high", "urgent"))
+        ]
+        label = "Sammanfattning" if on_demand else "Morgonsammanfattning"
+        parts = []
+        if mail:
+            parts.append(f"{len(mail)} viktiga mejl" if len(mail) != 1 else "1 viktigt mejl")
+        if files["count"]:
+            parts.append(f"{files['count']} {'ny fil' if files['count'] == 1 else 'nya filer'}")
+        if waited:
+            parts.append(f"{len(waited)} {'sak' if len(waited) == 1 else 'saker'} som väntat")
+        title = f"{label}: " + (", ".join(parts) if parts else "inget nytt sedan sist") + "."
+        detail_parts = []
+        if mail:
+            detail_parts.append("Mejl: " + " ".join(mail[:3]))
+        if files["top"]:
+            detail_parts.append("Filer: " + ", ".join(files["top"]))
+        if waited:
+            detail_parts.append("Väntat: " + "; ".join(i.title for i in waited[:5]))
+        rules = self.get_rules().notifications
+        # The scheduled summary may pop up (Windows); on demand the owner is already looking.
+        priority = "normal" if on_demand or rules.is_quiet(now) else "high"
+        n = await self.notifier.notify(
+            source="summary", title=title, detail=" · ".join(detail_parts) or None, priority=priority, kind="summary",
+            dedupe_key=None if on_demand else f"summary:{now:%Y-%m-%d %H:%M}", summarize=False,
+        )
+        self.last_summary = {
+            "created_at": now.timestamp(),
+            "since": since,
+            "on_demand": on_demand,
+            "title": n.title if n else title,
+            "mail": [mask_codes(m) for m in mail],
+            "files": files,
+            "waited": [{"time": datetime.fromtimestamp(i.created_at).strftime("%H:%M"), "priority": i.priority, "title": i.title} for i in waited],
+            "items": [i.public() for i in items],
+            "notification_id": n.id if n else None,
+        }
+        self._changed()
+        return n
+
+    async def summary_now(self) -> dict[str, Any]:
+        await self.morning_summary(on_demand=True)
+        return self.summary_public() or {}
+
+    def summary_public(self) -> dict[str, Any] | None:
+        """The latest summary for the UI card, with whether it has been acknowledged."""
+        if not self.last_summary:
+            return None
+        nid = self.last_summary["notification_id"]
+        n = next((x for x in self.notifier.recent if x.id == nid), None)
+        out = {k: v for k, v in self.last_summary.items() if k != "items"}
+        out["acknowledged"] = True if n is None else n.acknowledged
+        return out
 
     # -- state ---------------------------------------------------------------
     def status(self) -> dict[str, Any]:
@@ -117,10 +176,11 @@ class MonitorService:
             "jobs": self.scheduler.status(),
             "morning_summary_time": self.get_rules().notifications.morning_summary_time,
             "last_summary_at": self.last_summary["created_at"] if self.last_summary else None,
+            "gaming": self.gaming.status() if self.gaming is not None else {"enabled": False, "active": False, "reason": None, "since": None},
         }
 
     def snapshot(self) -> dict[str, Any]:
-        return {**self.status(), "recent": self.notifier.list_recent(20)}
+        return {**self.status(), "recent": self.notifier.list_recent(20), "summary": self.summary_public()}
 
 
 def register_monitor_tools(registry: "ToolRegistry", monitor: MonitorService) -> None:
@@ -160,7 +220,28 @@ def register_monitor_tools(registry: "ToolRegistry", monitor: MonitorService) ->
             schema({}),
             monitor_status,
             Risk.READ,
-            "system",
+            "personal",
+            output_sensitivity="personal",
+        )
+    )
+
+    async def monitor_summary_now(args, ctx) -> ToolResult:
+        s = await monitor.summary_now()
+        return ToolResult(
+            ok=True,
+            sensitivity="personal",
+            data={k: s.get(k) for k in ("title", "mail", "files", "waited")},
+        )
+
+    registry.register(
+        ToolSpec(
+            "monitor_summary_now",
+            "Make a summary now: important e-mail, new files and what has waited since the last summary. "
+            "Use for 'summarize the day' / 'sammanfatta dagen' / 'sammanfatta nu'.",
+            schema({}),
+            monitor_summary_now,
+            Risk.LOW,
+            "personal",
             output_sensitivity="personal",
         )
     )

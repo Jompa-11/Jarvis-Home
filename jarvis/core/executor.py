@@ -119,7 +119,7 @@ class ToolExecutor:
         if verdict.decision is Decision.DENY:
             return self._finish(ex, ToolResult(ok=False, error=f"Permission denied: {verdict.reason}"), status="denied")
 
-        will_dry_run = spec.supports_dry_run and spec.category in dry_run_categories
+        will_dry_run = spec.supports_dry_run and (spec.dry_run_category or spec.category) in dry_run_categories
         ctx = dataclasses.replace(ctx, dry_run=will_dry_run)
         # 3. Confirmation (skipped for dry runs, which change nothing)
         if verdict.decision is Decision.CONFIRM and not will_dry_run:

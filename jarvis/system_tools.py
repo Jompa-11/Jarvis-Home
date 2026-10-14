@@ -32,7 +32,7 @@ def register_system_tools(registry: ToolRegistry, core: "JarvisCore") -> None:
             },
         )
 
-    registry.register(ToolSpec("system_get_time", "Get the current local date and time.", schema({}), get_time, Risk.READ, "system"))
+    registry.register(ToolSpec("system_get_time", "Get the current local date and time. Use for questions like 'vad är klockan?', 'what time is it?', 'vilket datum är det?'.", schema({}), get_time, Risk.READ, "system"))
     registry.register(
         ToolSpec(
             "system_get_status",

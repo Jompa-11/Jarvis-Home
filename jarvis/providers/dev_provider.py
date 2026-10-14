@@ -28,12 +28,53 @@ def _target(text: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+_FILE_WORDS = {
+    "faktura": "faktura", "fakturan": "faktura", "fakturor": "faktura", "invoice": "invoice", "invoices": "invoice",
+    "kvitto": "kvitto", "kvittot": "kvitto", "kvitton": "kvitto", "receipt": "receipt", "receipts": "receipt",
+    "avtal": "avtal", "avtalet": "avtal", "kontrakt": "kontrakt", "kontraktet": "kontrakt", "contract": "contract",
+}
+
+
+def _file_search(text: str) -> dict | None:
+    """Arguments for files_search, or None when the text is not a file search."""
+    t = text.strip().lower()
+    m = re.search(
+        r"\b(?:sök|leta|hitta|search|find|look)\b(?:\s+(?:efter|upp|for))?\s+(?:the\s+)?(?:filen|file)\s+(?:som heter\s+|named\s+|called\s+)?(.+)$",
+        t,
+    )
+    if m:
+        query = m.group(1).strip(" \"'`.!?")
+    elif re.search(r"\b(hitta|sök|leta|visa|find|search|show)\b", t):
+        word = next((w for w in re.findall(r"[\wåäö]+", t) if w in _FILE_WORDS), None)
+        if word is None:
+            return None
+        query = _FILE_WORDS[word]
+    else:
+        return None
+    args: dict = {"query": query}
+    if re.search(r"\b(senaste veckan|förra veckan|denna vecka|last week|this week|past week)\b", t):
+        args["period"] = "week"
+    elif re.search(r"\b(idag|i dag|today)\b", t):
+        args["period"] = "today"
+    elif re.search(r"\b(senaste månaden|last month|this month)\b", t):
+        args["period"] = "month"
+    m = re.search(r"\b(?:som|as|type)\s+(pdf|docx?|xlsx?|pptx?|jpe?g|png|zip)\b", t)
+    if m:
+        args["file_type"] = m.group(1)
+    return args
+
+
 def match_intent(text: str, available: set[str]) -> ToolCall | None:
     t = text.strip().lower()
     target = _target(text)
 
     def ok(name: str) -> bool:
         return name in available
+
+    if re.search(r"\b(sammanfatta|sammanfattning|summari[sz]e|summary)\b", t) and ok("monitor_summary_now"):
+        return _call("monitor_summary_now")
+    if ok("files_search") and (args := _file_search(text)) is not None:
+        return _call("files_search", **args)
 
     if re.search(r"\b(speakers?|högtalare|sonos)\b", t) and re.search(r"\b(list|which|what|show|vilka|visa|lista)\b", t):
         return _call("sonos_list_speakers") if ok("sonos_list_speakers") else None
@@ -91,6 +132,24 @@ def _summarize(tool_name: str | None, content: str, is_error: bool) -> str:
         dry = data.get("dry_run", {})
         lines.append(f"- Dry-run: computer {'on' if dry.get('computer') else 'off'}, smart home {'on' if dry.get('smart_home') else 'off'}")
         return f"{LABEL}\nSystem status:\n" + "\n".join(lines)
+    if tool_name == "files_search" and isinstance(data, dict):
+        matches = data.get("matches", [])
+        if not matches:
+            return f"{LABEL}\n{data.get('note') or 'No matching files.'} {data.get('scope', '')}".rstrip()
+        lines = [f"- {m['name']} ({m['folder']}, {m['modified']})" for m in matches[:10]]
+        return f"{LABEL}\nI found {len(matches)} file(s), newest first:\n" + "\n".join(lines) + f"\n{data.get('scope', '')}"
+    if tool_name == "monitor_summary_now" and isinstance(data, dict):
+        lines = [data.get("title") or "Summary."]
+        lines += [f"- {m}" for m in data.get("mail") or []]
+        files = data.get("files") or {}
+        if files.get("count"):
+            lines.append(f"- New files ({files['count']}): {', '.join(files.get('top', []))}")
+        lines += [f"- {w['time']} {w['title']}" for w in data.get("waited") or []]
+        return f"{LABEL}\n" + "\n".join(lines)
+    if tool_name == "files_open_folder" and isinstance(data, dict):
+        if payload.get("dry_run"):
+            return f"{LABEL}\n{prefix}would open the folder {data.get('folder')} with {data.get('file')} highlighted."
+        return f"{LABEL}\nOpened the folder {data.get('folder')} with {data.get('file')} highlighted."
     if tool_name == "system_get_time" and isinstance(data, dict):
         return f"{LABEL}\nIt is {data.get('local_time')}."
     verified = payload.get("verified")
@@ -108,6 +167,22 @@ def _summarize(tool_name: str | None, content: str, is_error: bool) -> str:
             return f"{LABEL}\n{prefix}would open {data.get('app')} ({' '.join(data.get('would_run', []))})."
         return f"{LABEL}\nOpened {data.get('app')}."
     return f"{LABEL}\n{prefix}{tool_name} completed:\n{json.dumps(data, ensure_ascii=False, indent=2)[:1500]}"
+
+
+def _open_folder_from_history(text: str, messages: list[ChatMessage], available: set[str]) -> ToolCall | None:
+    """"öppna mappen där den ligger" right after a files_search: the newest match shown."""
+    if "files_open_folder" not in available:
+        return None
+    if not re.search(r"\b(öppna|visa|open|show)\b.*\b(mappen|folder|katalogen)\b", text.lower()):
+        return None
+    for m in reversed(messages):
+        if m.role == "tool" and m.tool_name == "files_search":
+            try:
+                matches = json.loads(m.content).get("data", {}).get("matches", [])
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                return None
+            return _call("files_open_folder", path=matches[0]["path"]) if matches else None
+    return None
 
 
 class DevProvider(AIProvider):
@@ -130,7 +205,7 @@ class DevProvider(AIProvider):
             text = "\n\n".join(reversed(results))
             return self._reply(text, [])
         text = last.content if last is not None and last.role == "user" else ""
-        call = match_intent(text, available)
+        call = _open_folder_from_history(text, messages, available) or match_intent(text, available)
         if call is not None:
             return self._reply("", [call])
         examples = [
@@ -140,6 +215,7 @@ class DevProvider(AIProvider):
                 ("sonos_set_volume", '"volume 30 in kitchen"'),
                 ("sonos_playback", '"pause in living room"'),
                 ("computer_open_app", '"open notepad"'),
+                ("files_search", '"hitta min senaste faktura"'),
                 ("system_get_status", '"system status"'),
             )
             if tool in available
