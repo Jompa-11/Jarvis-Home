@@ -257,6 +257,7 @@
     const st = $("mon-state");
     // Other profiles than the owner see no notifications, summary or controls.
     document.querySelectorAll(".mon-controls .btn").forEach((b) => (b.hidden = !!m.restricted));
+    $("discord-row").hidden = !!m.restricted;
     if (m.restricted) {
       st.textContent = "Bevakning: bara ägaren";
       st.className = "mon-state off";
@@ -299,6 +300,20 @@
     }
     $("notify-empty").hidden = (m.recent || []).length > 0;
     renderSummary(m.summary);
+    renderDiscord(m.discord);
+  }
+
+  // Discord: only on/off and errors are shown, never the webhook address.
+  function renderDiscord(d) {
+    const st = $("discord-state");
+    d = d || {};
+    const on = !!d.on;
+    st.textContent = !d.configured ? "Discord: av (inte inställt)" : d.paused ? "Discord: pausad" : "Discord: på";
+    st.className = "mon-state" + (on ? "" : d.paused ? " paused" : " off");
+    st.title = d.error || (d.configured ? `${d.sent_last_hour || 0}/${d.max_per_hour} senaste timmen · detaljnivå ${d.phone_detail}` : "Lägg DISCORD_WEBHOOK_URL i .env");
+    $("btn-discord-pause").hidden = !d.configured;
+    $("btn-discord-test").hidden = !d.configured;
+    $("btn-discord-pause").textContent = d.paused ? "Återuppta Discord" : "Pausa Discord";
   }
 
   // The latest summary stays visible until it is acknowledged.
@@ -337,6 +352,18 @@
     api("/api/notifications/mute", { method: "POST", body: JSON.stringify({ minutes: muted ? 0 : 60 }) }).then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } }).catch((e) => toast(e.message, "err"));
   });
   $("btn-mon-ack").addEventListener("click", () => api("/api/notifications/ack", { method: "POST", body: JSON.stringify({}) }).catch((e) => toast(e.message, "err")));
+  $("btn-discord-pause").addEventListener("click", () => {
+    const d = (ui.state && ui.state.monitoring && ui.state.monitoring.discord) || {};
+    api("/api/discord/pause", { method: "POST", body: JSON.stringify({ paused: !d.paused }) })
+      .then((m) => { if (ui.state) { ui.state.monitoring = m; renderMonitoring(m); } })
+      .catch((e) => toast(e.message, "err"));
+  });
+  $("btn-discord-test").addEventListener("click", () => {
+    if (!window.confirm("Skicka en testnotis till Discord (din mobil)?")) return;
+    api("/api/discord/test", { method: "POST", body: JSON.stringify({}) })
+      .then((r) => toast(r.sent ? "Testnotis skickad till Discord." : "Kunde inte skicka: " + (r.discord.error || "okänt fel"), r.sent ? "ok" : "err"))
+      .catch((e) => toast(e.message, "err"));
+  });
   $("btn-mon-summary").addEventListener("click", () => {
     const b = $("btn-mon-summary");
     b.disabled = true;

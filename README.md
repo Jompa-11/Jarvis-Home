@@ -5,7 +5,7 @@ orchestrator, hybrid AI (Claude in the cloud, Ollama locally), Home Assistant /
 Sonos control, a restricted Windows control layer, and a holographic HUD
 interface. Every indicator in the interface shows real backend state.
 
-![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-340%20passing-5fe3ff)
+![status](https://img.shields.io/badge/phase-1-5fe3ff) ![tests](https://img.shields.io/badge/tests-376%20passing-5fe3ff)
 
 ## What works today
 
@@ -24,6 +24,7 @@ interface. Every indicator in the interface shows real backend state.
 | File search and folder watching (Hämtade filer, Dokument): metadata only, never file contents | ✅ "hitta min senaste faktura", "öppna mappen där den ligger" (dry-run by default) |
 | Summary: important mail, new files and what waited, every morning or on demand ("Sammanfatta nu") | ✅ Shown in the notification panel until acknowledged |
 | Game mode: no background AI calls on the GPU while you play (e.g. `cs2.exe`, or GPU > 85 % for 2 min) | ✅ Mail that needs the model waits; rule matches still notify. "Spelläge: på" in the panel |
+| Phone notifications via Discord (outgoing only, important + urgent) | ✅ After `DISCORD_WEBHOOK_URL` in `.env`; see below |
 | Camera / gestures / identity / calendars / memory | ⏳ Interfaces only |
 
 ## Quick start (Windows 11)
@@ -65,6 +66,7 @@ Other commands:
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Cloud AI (Claude) | https://console.anthropic.com → API keys |
 | `HA_TOKEN` | Home Assistant / Sonos | Home Assistant → your profile → Security → Long-lived access tokens |
+| `DISCORD_WEBHOOK_URL` | Phone notifications | Your private Discord server → Integrations → Webhooks (see below) |
 
 With neither secret set, JARVIS still runs: it uses Ollama if installed, or else the dev fallback,
 which is clearly labelled in every reply.
@@ -87,6 +89,33 @@ Home Assistant and Sonos setup: see [docs/HOME_ASSISTANT_SETUP.md](docs/HOME_ASS
 * Mail, files, notifications, the summary and your rules are **owner only**: other profiles are neither
   offered those tools nor shown notifications.
 
+## Phone notifications via Discord
+
+JARVIS can post **important and urgent** notifications to a private Discord server, so they reach your phone.
+It is outgoing only: JARVIS posts through a webhook and never reads anything from Discord. The AI model has
+no tool that sends; only the notification code does, with fixed texts.
+
+1. **Create a private server.** In the Discord app: **+** (Add a Server) → **Create My Own** → **For me and my
+   friends** → name it e.g. `JARVIS`. Do not invite anyone.
+2. **Create the webhook.** Right-click the server (or tap its name) → **Server Settings** → **Integrations** →
+   **Webhooks** → **New Webhook** → name `JARVIS`, channel `#general` → **Copy Webhook URL**.
+3. **Put it in `.env`** (never in config, chat or git). Open `.env` in Notepad and add one line:
+   `DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...` (the URL you copied). Save. The URL is a password:
+   anyone with it can post in that channel. If it leaks, delete the webhook in Discord and make a new one.
+4. **Phone:** install Discord, sign in, open the server → long-press it → **Notification Settings** →
+   **All Messages**. Allow notifications for Discord in the phone's settings.
+5. **Test:** `.\.venv\Scripts\python.exe -m jarvis discord-test` (sends a fixed test message), or
+   **Skicka testnotis** in the notification panel.
+
+What is sent (`[discord]` in `config\jarvis.toml`):
+
+* Only `high` and `urgent`; at most `max_per_hour` (5) per hour. Quiet hours, mute, pause and **Pausa Discord**
+  apply; urgent may break through quiet hours (`urgent_overrides_quiet_hours`). Game mode does not stop Discord.
+* `phone_detail = "minimal"` (default): type and sender/domain or file name, e.g.
+  "Viktigt mejl från Skatteverket (skatteverket.se)". `"summary"` adds one sentence for mail.
+  Mail text and file paths are never sent; one-time codes are shown as `••••`; mentions are disabled.
+* Urgent starts with "🚨 AKUT" in a red box; important is blue. The morning summary sends only its counts.
+
 ## Using it
 
 Try “list speakers”, “set the kitchen to 30 percent”, “pause the living room”, “play Morning Jazz in the kitchen”,
@@ -108,7 +137,7 @@ Try “list speakers”, “set the kitchen to 30 percent”, “pause the livin
 
 ```bash
 pip install --require-hashes -r requirements-dev.lock
-python -m pytest            # 340 tests; no network, no hardware, no credentials needed
+python -m pytest            # 376 tests; no network, no hardware, no credentials needed
 python tests/fake_ha.py     # fake Home Assistant on :8123 (token "demo-token") for UI testing
 ```
 

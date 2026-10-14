@@ -34,7 +34,9 @@ from .mail.base import MailProvider
 from .mail.gmail import GmailProvider
 from .mail.watcher import MailWatcher, register_mail_tools
 from .monitoring.channels import UIChannel, WindowsToastChannel
+from .monitoring.discord import DiscordChannel
 from .monitoring.gaming import GamingDetector, GamingMode
+from .secrets import get_secret
 from .monitoring.notifier import NotificationChannel
 from .monitoring.service import MonitorService, register_monitor_tools
 from .rules import RulesConfig, load_rules, register_rules_tools
@@ -81,8 +83,14 @@ class JarvisCore:
         self.voice = VoiceController()
         self.voice.set_enabled(self.settings.current.microphone_enabled)
 
+        # Discord (phone): outgoing only; the webhook URL is a secret from .env, validated here.
+        self.discord: DiscordChannel | None = None
         if notification_channels is None:
             notification_channels = self._default_channels()
+        else:
+            self.discord = next((c for c in notification_channels if isinstance(c, DiscordChannel)), None)
+        if self.discord is not None:
+            self.discord.paused = self.settings.current.discord_paused
         self.monitor = MonitorService(
             cfg.monitoring,
             lambda: self.rules,
@@ -145,6 +153,10 @@ class JarvisCore:
                 channels.append(WindowsToastChannel())
             except RuntimeError as exc:
                 log.info("Windows notifications unavailable: %s", exc)
+        if self.cfg.discord.enabled:
+            self.discord = DiscordChannel(self.cfg.discord, get_secret(self.cfg.discord.webhook_env))
+            if self.discord.ready:
+                channels.append(self.discord)
         return channels
 
     # -- owner-only views -------------------------------------------------------
@@ -155,8 +167,14 @@ class JarvisCore:
     def monitoring_view(self) -> dict[str, Any]:
         """Notifications and the summary are personal: only shown for the owner profile."""
         if self.owner_active():
-            return self.monitor.snapshot()
+            return {**self.monitor.snapshot(), "discord": self.discord_status()}
         return {"restricted": True, "detail": "Notiser och sammanfattning visas bara för ägarprofilen."}
+
+    def discord_status(self) -> dict[str, Any]:
+        """For the UI: on/off and errors. Never the webhook URL."""
+        if self.discord is None:
+            return {"configured": False, "on": False, "paused": False, "error": None if not self.cfg.discord.enabled else "Discord is not set up."}
+        return self.discord.status()
 
     def _publish_if_owner(self, event: str, data: dict[str, Any]) -> None:
         if self.owner_active():
@@ -201,6 +219,8 @@ class JarvisCore:
             await self.mail.provider.aclose()
         if self.files is not None:
             self.files.index.close()
+        if self.discord is not None:
+            await self.discord.aclose()
         for task in (self._bg, self._state_watch):
             if task:
                 task.cancel()
@@ -255,6 +275,8 @@ class JarvisCore:
             self.voice.set_enabled(st.microphone_enabled)
         if "monitoring_paused" in changed:
             self.monitor.set_paused(st.monitoring_paused)
+        if "discord_paused" in changed and self.discord is not None:
+            self.discord.paused = st.discord_paused
         if changed & PRIVACY_KEYS:
             self.router.set_privacy(self._privacy())
         if changed & (PRIVACY_KEYS | {"active_profile"}):

@@ -49,19 +49,19 @@ regenerate the lock with the command at the top of the lock file (needs `uv`), a
 
 ## Status (2026-10-14)
 
-- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 340 tests pass; Ollama `qwen2.5:7b` runs 100% on
+- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 376 tests pass; Ollama `qwen2.5:7b` runs 100% on
   GPU with `num_ctx` 8192.
-- Merged: monitoring + rules (PR #8), Gmail read-only monitoring is signed in and active.
-- PR #9 (draft, not merged): file search + folder watching (Hämtade filer/Dokument via Known Folders), morning
-  summary + "Sammanfatta nu", per-request tool selection, owner-only personal tools, game mode
-  (`cs2.exe` or GPU > 85 % for 2 min: no background Ollama calls, model unloaded).
-- `toolcheck` (qwen2.5:7b, 3 runs each): step 4 alone 6–7/8 (more tools made qwen skip `computer_list_apps`
-  and answer the time from context); with tool selection 8/8 ×3; with step 5 (10 cases) 10, 10, 9/10;
-  final run 10/10. Small models are sensitive to the number of tools: measure with `toolcheck` after adding
-  tools. `toolcheck` refuses to run during game mode (results would be GPU timeouts).
+- Merged: monitoring + rules (PR #8, Gmail read-only signed in and active); PR #9: file search + folder
+  watching, morning summary + "Sammanfatta nu", per-request tool selection, owner-only personal tools,
+  game mode (`cs2.exe` or GPU > 85 % for 2 min: no background Ollama calls, model unloaded).
+- Branch `claude/jarvis-discord-notify` (draft PR): Discord phone notifications, outgoing webhook only,
+  `DISCORD_WEBHOOK_URL` in .env, high + urgent, max 5/h, minimal detail by default. The owner sets up the
+  server and webhook; the URL must never be printed, logged or shown.
+- `toolcheck` (qwen2.5:7b): 10/10 on the final PR #9 run (3-run series: 10, 10, 9). Small models are
+  sensitive to the number of tools; measure after adding tools. It refuses to run during game mode.
 - Voice (PR #6, #7) is paused as drafts; monitoring must not depend on it.
 - Not configured yet: Claude API key (owner must set a spend limit in the Anthropic Console first),
-  Home Assistant + Sonos (planned on the Raspberry Pi), phone notifications (Discord webhook, own branch later).
+  Home Assistant + Sonos (planned on the Raspberry Pi).
 
 ## Git workflow
 

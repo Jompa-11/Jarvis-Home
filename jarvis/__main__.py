@@ -7,6 +7,7 @@
     python -m jarvis toolcheck    check that the local AI model uses JARVIS's tools (dry-run)
     python -m jarvis mail-login --client-secret <file>   sign in to Gmail (read-only) in the browser
     python -m jarvis mail-logout  revoke the Gmail token and remove it from Credential Manager
+    python -m jarvis discord-test send a fixed test notification to the Discord webhook in .env
 """
 
 from __future__ import annotations
@@ -96,9 +97,26 @@ def _serve(cfg: JarvisConfig, desktop: bool, open_browser: bool) -> int:
     return 0
 
 
+async def _discord_test(cfg) -> int:
+    from .monitoring.discord import DiscordChannel
+    from .secrets import get_secret
+
+    channel = DiscordChannel(cfg.discord, get_secret(cfg.discord.webhook_env))
+    try:
+        if not channel.ready:
+            print(f"Discord is off: {channel.error}")
+            return 2
+        ok = await channel.send_test()
+        # The webhook URL is never printed.
+        print("Test notification sent to Discord. Check your phone." if ok else f"Sending failed: {channel.error}")
+        return 0 if ok else 1
+    finally:
+        await channel.aclose()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS home assistant")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck", "mail-login", "mail-logout"])
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "check", "diagnose", "toolcheck", "mail-login", "mail-logout", "discord-test"])
     parser.add_argument("--client-secret", help="mail-login: path to the OAuth client JSON (Desktop app) from Google Cloud")
     parser.add_argument("--forget-client", action="store_true", help="mail-logout: also remove the stored OAuth client")
     parser.add_argument("--config", help="Path to jarvis.toml")
@@ -133,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         removed = logout(forget_client=args.forget_client)
         print("Gmail token revoked and removed from Credential Manager." if removed else "No Gmail token was stored.")
         return 0
+    if args.command == "discord-test":
+        return asyncio.run(_discord_test(cfg))
     if args.command == "toolcheck":
         from .toolcheck import format_report, run_toolcheck
 

@@ -137,6 +137,16 @@ max_depth = 8
 max_files = 50000
 refresh_minutes = 15
 
+# ----------------------------------------------------------- Discord ----
+# Phone notifications through a private Discord server (OUTGOING only; JARVIS
+# never reads anything from Discord). Put the webhook URL in .env as
+# DISCORD_WEBHOOK_URL (never here). Only high and urgent notifications are
+# sent; quiet hours, mute and pause apply (urgent may break through quiet hours).
+[discord]
+enabled = true
+phone_detail = "minimal"         # "minimal": type + sender/domain or file name; "summary": plus one sentence
+max_per_hour = 5
+
 # ------------------------------------------------------------ Gaming ----
 # Game mode: while one of these programs runs, or the GPU stays above the
 # threshold, JARVIS makes no background calls to the local model and unloads

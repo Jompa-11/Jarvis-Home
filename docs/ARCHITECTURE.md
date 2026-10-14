@@ -86,6 +86,15 @@ today; voice and phone channels plug in without changing the Notifier. **The mod
 sends notifications.** Only code calls `Notifier.notify`, with fixed templates; tools the model can use
 here (`rules_show`, `monitor_status`) are read-only and their output is `personal`.
 
+**Discord (phone)** — `jarvis/monitoring/discord.py`, an interrupting `NotificationChannel` for `high` and
+`urgent`. Outgoing only: it POSTs to one webhook and has no receiving code. The webhook URL is read from
+`DISCORD_WEBHOOK_URL` (.env), must match `https://discord.com/api/webhooks/<id>/<token>` (or discordapp.com),
+is registered with the log redactor (plus a URL pattern), and is never shown in the UI. The payload is built
+from the notification's fixed-template title only (`phone_detail = "summary"` adds one mail sentence; file
+details, which contain folders, are never sent); mentions are broken and `allowed_mentions` is empty. Own hourly
+limit, 10 s timeout, 3 attempts with backoff and Discord's `retry_after` on 429; failures are logged and
+never raised. Test messages (UI after confirmation, `python -m jarvis discord-test`) use fixed text.
+
 **Windows notifications** are shown by running a *fixed* PowerShell script (`_TOAST_SCRIPT` in
 `jarvis/monitoring/channels.py`, passed with `-EncodedCommand`). The notification title and text are
 **never part of the command**: they are passed only as environment variables (`JARVIS_TOAST_TITLE`,
