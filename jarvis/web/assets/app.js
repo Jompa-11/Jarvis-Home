@@ -400,10 +400,14 @@
     const m = el("div", "msg msg-assistant");
     m.appendChild(el("div", "msg-body", result.text));
     const meta = el("div", "msg-meta");
-    if (result.is_fallback) meta.appendChild(el("span", "badge fallback", result.provider === "dev" ? "Dev fallback" : "Fallback"));
+    const fast = result.provider === "fast";
+    if (fast) meta.appendChild(el("span", "badge fast", "SNABB"));
+    // Only a real stand-in is a fallback. Answering with a later provider in the
+    // chain (the normal case when Claude is not configured) is not an error.
+    if (!fast && result.is_fallback && result.provider === "dev") meta.appendChild(el("span", "badge fallback", "Dev fallback"));
     const last = (result.providers || []).slice(-1)[0];
-    if (last && last.kind === "local") meta.appendChild(el("span", "badge local", "Local"));
-    if (result.model) meta.appendChild(el("span", null, result.model));
+    if (!fast && last && last.kind === "local") meta.appendChild(el("span", "badge local", "Local"));
+    if (result.model && !fast) meta.appendChild(el("span", null, result.model));
     if (result.estimated_cost_usd) meta.appendChild(el("span", null, `~$${result.estimated_cost_usd.toFixed(4)}`));
     if (result.duration_s != null) meta.appendChild(el("span", null, `${result.duration_s}s`));
     m.appendChild(meta);

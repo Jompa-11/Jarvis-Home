@@ -32,6 +32,15 @@ def is_windows() -> bool:
     return sys.platform == "win32"
 
 
+def list_windows() -> list["WindowInfo"]:
+    """Visible top-level windows. Empty off Windows."""
+    return _enum_windows() if is_windows() else []
+
+
+def set_foreground(hwnd: int) -> bool:
+    return _set_foreground(hwnd) if is_windows() else False
+
+
 class ComputerError(Exception):
     pass
 

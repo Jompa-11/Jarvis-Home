@@ -19,11 +19,24 @@ from jarvis.config import ComputerConfig
 CLOUD = {"ai": {"routes": {name: [{"provider": "anthropic"}] for name in ("conversation", "computer", "smart_home")}}}
 
 
-def launcher(apps=None, **cfg):
+def launcher(apps=None, windows=None, **cfg):
+    """A launcher that records instead of starting, and never waits for a real window."""
     started: list[list[str]] = []
-    lau = AppLauncher(ComputerConfig(**cfg), list_apps=lambda: list(apps if apps is not None else FAKE_APPS),
-                      launch=started.append, is_windows=lambda: True)
+    open_windows = list(windows or [])
+    elapsed = [0.0]
+    lau = AppLauncher(
+        ComputerConfig(**cfg), list_apps=lambda: list(apps if apps is not None else FAKE_APPS),
+        launch=started.append, is_windows=lambda: True,
+        windows=lambda: list(open_windows), focus=lambda hwnd: True,
+        clock=lambda: elapsed[0], sleep=lambda s: elapsed.__setitem__(0, elapsed[0] + s),
+    )
     return lau, started
+
+
+def window(title, handle=1):
+    from jarvis.computer.windows import WindowInfo
+
+    return WindowInfo(handle=handle, title=title, process_id=handle)
 
 
 def desktop():
@@ -32,12 +45,16 @@ def desktop():
 
 
 # ------------------------------------------------------------------ programs ----
-@pytest.mark.parametrize("query, expected", [("spotify", "Spotify"), ("SPOTIFY", "Spotify"), ("discord", "Discord"),
-                                             ("anteckningar", "Anteckningar"), ("chrome", "Google Chrome"), ("kalkylatorn", "Kalkylatorn")])
+@pytest.mark.parametrize("query, expected", [
+    ("spotify", "Spotify"), ("SPOTIFY", "Spotify"), ("discord", "Discord"), ("anteckningar", "Anteckningar"),
+    ("chrome", "Google Chrome"), ("kalkylatorn", "Kalkylatorn"),
+    # Misspelt, misheard or split in two: the fuzzy match still finds the program.
+    ("cap cut", "CapCut"), ("CapCut", "CapCut"), ("cicaput", "CapCut"), ("disscord", "Discord"),
+])
 def test_starts_any_installed_program(query, expected):
     lau, started = launcher()
     data = lau.open(query, dry_run=False)
-    assert data["app"] == expected and data["started"] is True
+    assert data["app"] == expected and data["started"] is True and data["already_running"] is False
     assert started[0][0] == "explorer.exe" and started[0][1].startswith("shell:AppsFolder\\")
 
 
@@ -49,15 +66,32 @@ def test_allowlist_entries_stay_as_aliases():
 
 def test_unknown_program_and_ambiguous_program_ask_instead_of_guessing():
     lau, started = launcher()
-    with pytest.raises(ComputerError, match="Hittade inget installerat program"):
-        lau.open("finnsinte", dry_run=False)
+    with pytest.raises(ComputerError, match="Hittade inget installerat program") as exc:
+        lau.open("zzzzqqq", dry_run=False)
+    assert "Närmast:" in str(exc.value)  # suggests the three closest names
     several = [App("Firefox", "a"), App("Mozilla Firefox ESR", "b"), App("Waterfox (Firefox fork)", "c")]
     lau2, _ = launcher(apps=several)
     assert lau2.open("firefox", dry_run=False)["app"] == "Firefox"  # exact match wins
-    lau3, _ = launcher(apps=several[1:])  # now only partial matches: ask instead of guessing
-    with pytest.raises(ComputerError, match="Flera program matchar"):
-        lau3.open("firefox", dry_run=False)
+    two_close = [App("Zoom Workplace", "a"), App("Zoom Rooms", "b")]
+    lau3, _ = launcher(apps=two_close)
+    with pytest.raises(ComputerError, match="Menade du Zoom"):
+        lau3.open("zoom", dry_run=False)
     assert started == []
+
+
+def test_an_already_open_program_is_brought_to_the_front_not_started_again():
+    lau, started = launcher(windows=[window("Projekt – CapCut")])
+    data = lau.open("capcut", dry_run=False)
+    assert data["already_running"] is True and data["focused"] is True and data["verified"] is True
+    assert data["window"] == "Projekt – CapCut"
+    assert started == []  # nothing was launched a second time
+
+
+def test_starting_without_a_window_is_reported_honestly():
+    lau, started = launcher()  # no window ever appears
+    data = lau.open("spotify", dry_run=False)
+    assert data["started"] is True and data["verified"] is False and data["window"] is None
+    assert started  # it really was launched
 
 
 def test_open_program_dry_run_starts_nothing():

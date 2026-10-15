@@ -134,6 +134,10 @@ class OllamaConfig(BaseModel):
     # keeps the GPU busy until the context is full, and Ollama queues every later
     # request (including background monitoring) behind it.
     num_predict: int = Field(1024, ge=64, le=8192)
+    # Reasoning models (qwen3) think before answering, which costs seconds on every
+    # turn. JARVIS wants a tool call, not an essay, so thinking is off. Models
+    # without it ignore the flag.
+    think: bool = False
 
 
 class AIConfig(BaseModel):
@@ -141,6 +145,9 @@ class AIConfig(BaseModel):
     # The dev fallback is a rule-based stand-in so the app is testable without
     # any model. It is never silent: responses are labelled as fallback.
     allow_dev_fallback: bool = True
+    # Handle everyday commands ("öppna spotify", "volym 30") with local rules
+    # instead of the model: instant, free and it cannot invent an answer.
+    fast_path: bool = True
     request_timeout_s: float = Field(60, gt=0, le=600)
     max_tool_rounds: int = Field(6, ge=1, le=20)
     monthly_budget_usd: float = Field(10.0, ge=0)

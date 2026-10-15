@@ -23,16 +23,20 @@ max_tool_rounds = 6
 
 # Each task category tries providers in order. Categories are chosen locally
 # by keywords, so routing never costs a model call.
+# Ollama is first: it is local and free, and nothing is sent to the cloud.
+# Claude is last and is only used if you move it up and set ANTHROPIC_API_KEY.
 # effort: low | medium | high — lower effort means fewer tokens and lower cost.
+[[ai.routes.conversation]]
+provider = "ollama"
 [[ai.routes.conversation]]
 provider = "anthropic"
 model = "claude-opus-5-5"
 effort = "low"
 [[ai.routes.conversation]]
-provider = "ollama"
-[[ai.routes.conversation]]
 provider = "dev"
 
+[[ai.routes.smart_home]]
+provider = "ollama"
 [[ai.routes.smart_home]]
 provider = "anthropic"
 model = "claude-opus-5-5"
@@ -40,16 +44,14 @@ effort = "low"
 # Cheaper alternative for simple device commands — uncomment to try:
 # model = "claude-haiku-5-5"
 [[ai.routes.smart_home]]
-provider = "ollama"
-[[ai.routes.smart_home]]
 provider = "dev"
 
+[[ai.routes.computer]]
+provider = "ollama"
 [[ai.routes.computer]]
 provider = "anthropic"
 model = "claude-opus-5-5"
 effort = "low"
-[[ai.routes.computer]]
-provider = "ollama"
 [[ai.routes.computer]]
 provider = "dev"
 

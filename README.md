@@ -25,6 +25,7 @@ interface. Every indicator in the interface shows real backend state.
 | Summary: important mail, new files and what waited, every morning or on demand ("Sammanfatta nu") | ✅ Shown in the notification panel until acknowledged |
 | Game mode: no background AI calls on the GPU while you play (e.g. `cs2.exe`, or GPU > 85 % for 2 min) | ✅ Mail that needs the model waits; rule matches still notify. "Spelläge: på" in the panel |
 | Desktop app: own window on the main monitor, icon by the clock, one instance, auto-restart, autostart, pinned taskbar icon | ✅ `.\scripts\autostart.ps1 -Install`; see below |
+| Everyday commands answered by local rules, without the AI model (marked **SNABB**) | ✅ "öppna spotify", "volym 30", "pausa musiken", "lås datorn" |
 | Camera / gestures / identity / calendars / memory | ⏳ Interfaces only |
 
 ## Quick start (Windows 11)

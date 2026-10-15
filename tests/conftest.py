@@ -61,6 +61,7 @@ class ScriptedProvider(AIProvider):
 
 
 FAKE_APPS = [
+    App("CapCut", "ByteDance.CapCut_x!App"),
     App("Spotify", "SpotifyAB.SpotifyMusic_x!Spotify"),
     App("Discord", "com.squirrel.Discord.Discord"),
     App("Anteckningar", "Microsoft.WindowsNotepad_x!App"),
@@ -134,7 +135,12 @@ def _no_shell(*a, **kw):
 def make_config(tmp_path: Path, **overrides: Any) -> JarvisConfig:
     raw: dict[str, Any] = {
         "data_dir": str(tmp_path / "data"),
-        "ai": {"routes": {"conversation": [{"provider": "anthropic", "model": "claude-opus-5-5"}, {"provider": "ollama"}, {"provider": "dev"}]}},
+        # Most tests target the model path, so the rule shortcut is off here;
+        # the fast-path tests switch it on with ai={"fast_path": True}.
+        "ai": {
+            "routes": {"conversation": [{"provider": "anthropic", "model": "claude-opus-5-5"}, {"provider": "ollama"}, {"provider": "dev"}]},
+            "fast_path": False,
+        },
         # Tests exercise real (fake-HA) calls; dry-run behaviour is tested explicitly.
         "homeassistant": {"url": "http://ha.test", "timeout_s": 2, "dry_run": False},
         # Dry-run ON in tests (the product default is off): a test must never really
@@ -171,6 +177,11 @@ def make_core(tmp_path, fake_ha, monkeypatch):
         if ha_token:
             monkeypatch.setenv("HA_TOKEN", HA_TOKEN)
         cfg = make_config(tmp_path, **cfg_overrides)
+        desktop_api = FakeDesktopAPI()
+        # A clock the sleeps move forward, so waiting for a window costs no real time.
+        elapsed = [0.0]
+        fake_clock = lambda: elapsed[0]  # noqa: E731
+        fake_sleep = lambda s: elapsed.__setitem__(0, elapsed[0] + s)  # noqa: E731
         core = JarvisCore(
             cfg,
             providers=providers,
@@ -184,8 +195,13 @@ def make_core(tmp_path, fake_ha, monkeypatch):
             # Never touch Gmail or Windows Credential Manager from tests.
             mail_provider=mail_provider if mail_provider is not None else FakeMailProvider(signed_in=False),
             # Never read the real Start menu, touch the real desktop or run PowerShell from a test.
-            launcher=AppLauncher(cfg.computer, list_apps=lambda: list(FAKE_APPS), launch=lambda cmd: None, is_windows=lambda: True),
-            desktop=Desktop(api=FakeDesktopAPI()),
+            launcher=AppLauncher(
+                cfg.computer, list_apps=lambda: list(FAKE_APPS), launch=lambda cmd: None, is_windows=lambda: True,
+                # Share the fake desktop's windows, and never really wait for one.
+                windows=lambda: desktop_api.list_windows(), focus=lambda hwnd: True,
+                clock=fake_clock, sleep=fake_sleep,
+            ),
+            desktop=Desktop(api=desktop_api),
             file_actions=FileActions(home=tmp_path / "home", notes_folder=tmp_path / "home" / "Documents",
                                      recycle=lambda p: p.unlink(), is_windows=lambda: True),
             shell=shell if shell is not None else PowerShellRunner(run=_no_shell),

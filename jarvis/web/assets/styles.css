@@ -258,6 +258,7 @@ button, input, select { font: inherit; color: inherit; }
 .send-btn:disabled { opacity: .4; cursor: default; box-shadow: none; }
 .stop-btn { background: var(--err-soft); color: var(--err); border: 1px solid rgba(255, 93, 122, 0.4); }
 .composer-hint { text-align: center; font-size: 11.5px; color: var(--text-faint); min-height: 16px; }
+.badge.fast { background: rgba(95, 227, 255, 0.16); color: var(--cyan); border-color: rgba(95, 227, 255, 0.45); }
 .untrusted-note { text-align: center; font-size: 11px; color: var(--warn); opacity: .9; padding-top: 2px; }
 .untrusted-note[hidden] { display: none; }
 

@@ -14,6 +14,7 @@ with their own fixed command line.
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import subprocess
@@ -26,6 +27,8 @@ from typing import Any
 
 from ..config import ComputerConfig
 from .windows import is_windows as _is_windows
+from .windows import list_windows as _list_windows
+from .windows import set_foreground as _focus_window
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +42,12 @@ LIST_COMMAND = [
 ]
 CACHE_SECONDS = 300.0
 MAX_CHOICES = 6
+# Below this a fuzzy match is not a match at all.
+FUZZY_MIN = 0.55
+# A fuzzy winner must be this much better than the runner-up to be used without asking.
+FUZZY_MARGIN = 0.12
+# How long to wait for a window after starting a program, before saying so.
+WINDOW_WAIT_S = 8.0
 
 
 @dataclass(frozen=True)
@@ -61,28 +70,45 @@ def read_start_apps() -> list[App]:  # pragma: no cover - runs a real PowerShell
     return [App(str(d["Name"]), str(d["AppID"])) for d in data if d.get("Name") and d.get("AppID")]
 
 
-def rank(query: str, apps: list[App]) -> list[App]:
-    """Apps matching ``query``, best first: exact name, then prefix, then substring, then words."""
-    q = _fold(query)
+def _squeeze(text: str) -> str:
+    """Folded and without spaces, so "cap cut" and "CapCut" compare equal."""
+    return "".join(_fold(text).split())
+
+
+def similarity(query: str, name: str) -> float:
+    """0-1. Compares both as written and with the spaces removed."""
+    q, n = _fold(query), _fold(name)
+    direct = difflib.SequenceMatcher(None, q, n).ratio()
+    squeezed = difflib.SequenceMatcher(None, _squeeze(query), _squeeze(name)).ratio()
+    return max(direct, squeezed)
+
+
+def rank(query: str, apps: list[App]) -> list[tuple[float, int, App]]:
+    """(score, app) best first. Exact and prefix matches first, then a fuzzy match,
+    so a misheard or misspelt name ("cap cut", "cicaput") still finds CapCut."""
+    q, qs = _fold(query), _squeeze(query)
     if not q:
         return []
     words = [w for w in q.split() if w]
-    scored: list[tuple[int, int, App]] = []
+    scored: list[tuple[float, int, App]] = []
     for app in apps:
-        name = _fold(app.name)
-        if name == q:
-            score = 0
-        elif name.startswith(q):
-            score = 1
-        elif q in name:
-            score = 2
+        name, ns = _fold(app.name), _squeeze(app.name)
+        if name == q or ns == qs:
+            tier, score = 0, 1.0
+        elif name.startswith(q) or ns.startswith(qs):
+            tier, score = 1, 0.98
+        elif q in name or qs in ns:
+            tier, score = 2, 0.95
         elif words and all(w in name for w in words):
-            score = 3
+            tier, score = 3, 0.9
         else:
-            continue
-        scored.append((score, len(name), app))
-    scored.sort(key=lambda s: (s[0], s[1], s[2].name))
-    return [app for _, _, app in scored]
+            score = similarity(query, app.name)
+            if score < FUZZY_MIN:
+                continue
+            tier = 4
+        scored.append((score, tier, app))
+    scored.sort(key=lambda s: (s[1], -s[0], len(s[2].name), s[2].name))
+    return scored
 
 
 class AppLauncher:
@@ -95,13 +121,19 @@ class AppLauncher:
         list_apps: Callable[[], list[App]] = read_start_apps,
         launch: Callable[[list[str]], None] | None = None,
         is_windows: Callable[[], bool] | None = None,
+        windows: Callable[[], list] | None = None,
+        focus: Callable[[int], bool] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.cfg = cfg
         self._list_apps = list_apps
         self._launch = launch or _launch_detached
         self.is_windows = is_windows or _is_windows
+        self._windows = windows or _list_windows
+        self._focus = focus or _focus_window
         self.clock = clock
+        self._sleep = sleep
         self._apps: list[App] = []
         self._read_at: float | None = None
         self.last_error: str | None = None
@@ -132,7 +164,7 @@ class AppLauncher:
 
     # -- starting ------------------------------------------------------------
     def resolve(self, query: str) -> tuple[list[str], str]:
-        """(command, what was started). Raises ComputerError when nothing or too much matches."""
+        """(command, program name). Asks instead of guessing when the match is unclear."""
         from .windows import ComputerError
 
         key = query.strip().lower()
@@ -141,29 +173,77 @@ class AppLauncher:
             return list(alias.command), alias.description or key
         matches = rank(query, self.apps())
         if not matches:
-            matches = rank(query, self.apps(force=True))  # a program installed since the last read
+            matches = rank(query, self.apps(force=True))  # installed since the last read
         if not matches:
             extra = f" ({self.last_error})" if self.last_error else ""
-            raise ComputerError(f"Hittade inget installerat program som heter '{query}'.{extra}")
-        best = matches[0]
-        others = [m for m in matches[1:] if _fold(m.name) != _fold(best.name)]
-        # One clear winner (exact or prefix match) wins even when more programs contain the word.
-        if others and not (_fold(best.name) == _fold(query) or _fold(best.name).startswith(_fold(query))):
-            names = ", ".join(m.name for m in matches[:MAX_CHOICES])
-            raise ComputerError(f"Flera program matchar '{query}': {names}. Vilket menar du?")
+            near = ", ".join(a.name for _, a in self._nearest(query, 3))
+            hint = f" Närmast: {near}." if near else ""
+            raise ComputerError(f"Hittade inget installerat program som heter '{query}'.{extra}{hint}")
+        best_score, best_tier, best = matches[0]
+        rivals = [m for m in matches[1:] if _fold(m[2].name) != _fold(best.name)]
+        # Only an exact match (tier 0) is a clear winner on its own. Otherwise two
+        # names that are equally good are a question, not a guess.
+        if rivals and best_tier >= 1:
+            rival_score, rival_tier, rival = rivals[0]
+            if rival_tier == best_tier and best_score - rival_score < FUZZY_MARGIN:
+                more = ", ".join(a.name for _, _, a in rivals[1:MAX_CHOICES])
+                extra = f" (även: {more})" if more else ""
+                raise ComputerError(f"Menade du {best.name} eller {rival.name}?{extra}")
         return ["explorer.exe", f"shell:AppsFolder\\{best.app_id}"], best.name
 
+    def _nearest(self, query: str, limit: int) -> list[tuple[float, App]]:
+        scored = sorted(((similarity(query, a.name), a) for a in self.apps()), key=lambda s: -s[0])
+        return scored[:limit]
+
+    # -- is it already open? -------------------------------------------------
+    def _matching_window(self, name: str):
+        """A visible window that belongs to this program, or None."""
+        folded = _fold(name)
+        squeezed = _squeeze(name)
+        best = None
+        for w in self._windows():
+            title = _fold(w.title)
+            if squeezed and _squeeze(w.title).find(squeezed) >= 0:
+                return w
+            if folded and folded in title:
+                best = best or w
+        return best
+
     def open(self, query: str, *, dry_run: bool) -> dict[str, Any]:
+        """Start the program, or bring it to the front when it is already open.
+
+        The result says what really happened, so JARVIS never claims to have
+        started something it only focused (or did not manage to start at all).
+        """
+        from .windows import ComputerError
+
         command, name = self.resolve(query)
         if dry_run:
             return {"app": name, "would_run": command}
-        from .windows import ComputerError
-
         if not self.is_windows():
             raise ComputerError("Att starta program fungerar bara på Windows.")
+
+        existing = self._matching_window(name)
+        if existing is not None:
+            focused = self._focus(existing.handle)
+            log.info("%s was already running; brought it to the front", name)
+            return {"app": name, "already_running": True, "focused": bool(focused),
+                    "window": existing.title, "verified": bool(focused)}
+
         self._launch(command)
-        log.info("Started program %s", name)
-        return {"app": name, "started": True}
+        window = self._wait_for_window(name)
+        log.info("Started %s (window seen: %s)", name, window is not None)
+        return {"app": name, "already_running": False, "started": True,
+                "window": window.title if window else None, "verified": window is not None}
+
+    def _wait_for_window(self, name: str):
+        deadline = self.clock() + WINDOW_WAIT_S
+        while self.clock() < deadline:
+            window = self._matching_window(name)
+            if window is not None:
+                return window
+            self._sleep(0.4)
+        return None
 
 
 def _launch_detached(command: list[str]) -> None:  # pragma: no cover - starts a real process

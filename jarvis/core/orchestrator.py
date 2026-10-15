@@ -14,8 +14,9 @@ import uuid
 from typing import Any
 
 from ..config import SENSITIVITY_ORDER, JarvisConfig
-from ..providers.base import ChatMessage
+from ..providers.base import ChatMessage, ToolCall
 from ..providers.router import NoProviderAvailable, ProviderRouter, categorize
+from . import fastpath
 from .tool_select import select_tools
 from ..rules import RulesConfig, build_preferences_section
 from .conversation import Conversation
@@ -142,6 +143,44 @@ class Orchestrator:
     def _raise_if_cancelled(self) -> None:
         if self._cancel_requested:
             raise asyncio.CancelledError
+    async def _run_fast(self, fast, ctx: ToolContext, dry_cats, request_id: str, category: str, started: float) -> dict[str, Any]:
+        """Run one tool from a rule and answer from a fixed Swedish template."""
+        call = ToolCall(id=f"fast_{uuid.uuid4().hex[:8]}", name=fast.tool, arguments=dict(fast.args))
+        self.conversation.append(ChatMessage(role="assistant", content="", tool_calls=[call]))
+        try:
+            ex, result = await self.executor.execute(call, ctx, dry_cats)
+        except asyncio.CancelledError:
+            self._close_dangling_tool_calls("Request aborted.")
+            raise
+        if result.ok:
+            text = fast.reply(result.data if isinstance(result.data, dict) else {}, bool(result.dry_run))
+        else:
+            text = result.error or "Det gick inte."
+        self.conversation.append(
+            ChatMessage(role="tool", content=result_to_model_text(result), tool_call_id=call.id,
+                        tool_name=call.name, is_error=not result.ok, sensitivity=result.sensitivity)
+        )
+        self.conversation.append(ChatMessage(role="assistant", content=text, sensitivity=result.sensitivity))
+        out = {
+            "ok": True,
+            "request_id": request_id,
+            "text": text,
+            "category": category,
+            "tool_groups": [fastpath.PROVIDER],
+            "untrusted_context": sorted(self.conversation.untrusted_sources()),
+            "provider": fastpath.PROVIDER,
+            "model": "regler",
+            "is_fallback": False,
+            "providers": [{"provider": fastpath.PROVIDER, "model": "regler", "kind": "rules", "is_fallback": False, "attempts": []}],
+            "executions": [ex.id],
+            "estimated_cost_usd": 0.0,
+            "duration_s": round(time.monotonic() - started, 2),
+        }
+        self.last_error = None
+        self._set_status("idle")
+        self.bus.publish("turn.completed", out)
+        return out
+
     def _close_dangling_tool_calls(self, reason: str) -> None:
         """Keep the transcript valid: every tool call must have a result."""
         msgs = self.conversation.messages
@@ -196,6 +235,13 @@ class Orchestrator:
         providers_used: list[dict[str, Any]] = []
         total_cost = 0.0
         final_text = ""
+
+        # Everyday commands never reach the model: a rule that is certain runs the
+        # tool itself, through the same executor (permissions, confirmation, the
+        # untrusted-data rules and dry-run all still apply).
+        fast = fastpath.match(text) if self.cfg.ai.fast_path else None
+        if fast is not None and fastpath.usable(fast, tools):
+            return await self._run_fast(fast, ctx, dry_cats, request_id, category, started)
 
         try:
             for _round in range(self.cfg.ai.max_tool_rounds):
