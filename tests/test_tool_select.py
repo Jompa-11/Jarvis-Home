@@ -16,8 +16,8 @@ CLOUD = {"ai": {"routes": {"conversation": [{"provider": "anthropic"}], "compute
         ("Vad är klockan?", {"system"}),
         ("Visa systemstatus", {"system"}),
         ("Vilka program får du starta?", {"computer"}),
-        ("Öppna anteckningar", {"computer"}),
-        ("Pausa musiken i köket", {"smart_home"}),
+        ("Öppna anteckningar", {"computer", "files"}),
+        ("Pausa musiken i köket", {"media", "smart_home"}),
         ("Which speakers do you have?", {"smart_home"}),
         ("hitta min senaste faktura", {"files"}),
         ("öppna mappen där den ligger", {"computer", "files"}),
@@ -34,7 +34,7 @@ def test_detect_groups(text, groups):
 def test_every_registered_tool_has_a_known_group(make_core):
     core = make_core()
     groups = {tool_group(t) for t in core.registry.all()}
-    assert groups <= {"system", "computer", "files", "mail", "monitor", "smart_home"}
+    assert groups <= {"system", "computer", "files", "mail", "monitor", "smart_home", "media", "power", "shell"}
     assert tool_group(core.registry.get("rules_show")) == "system"
 
 

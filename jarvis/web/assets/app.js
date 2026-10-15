@@ -215,6 +215,7 @@
     $("set-mic").checked = st.microphone_enabled;
     $("set-camera").checked = st.camera_enabled;
     $("set-speak").checked = st.speak_replies;
+    $("set-advanced").checked = st.advanced_mode;
   }
 
   function renderConfirmations(s) {
@@ -347,9 +348,18 @@
       .finally(() => { b.disabled = false; });
   });
 
+  // The chat holds text written by someone else, so actions are confirmed until it is cleared.
+  function renderUntrusted(conversation) {
+    const note = $("untrusted-note");
+    const sources = (conversation && conversation.untrusted_context) || [];
+    note.hidden = sources.length === 0;
+    note.textContent = sources.length ? `Läst extern data (${sources.join(", ")}) – handlingar bekräftas. "New conversation" nollställer.` : "";
+  }
+
   function renderAll() {
     const s = ui.state;
     if (!s) return;
+    renderUntrusted(s.conversation);
     renderMonitoring(s.monitoring);
     renderHeader(s);
     renderSystems(s);
@@ -390,10 +400,14 @@
     const m = el("div", "msg msg-assistant");
     m.appendChild(el("div", "msg-body", result.text));
     const meta = el("div", "msg-meta");
-    if (result.is_fallback) meta.appendChild(el("span", "badge fallback", result.provider === "dev" ? "Dev fallback" : "Fallback"));
+    const fast = result.provider === "fast";
+    if (fast) meta.appendChild(el("span", "badge fast", "SNABB"));
+    // Only a real stand-in is a fallback. Answering with a later provider in the
+    // chain (the normal case when Claude is not configured) is not an error.
+    if (!fast && result.is_fallback && result.provider === "dev") meta.appendChild(el("span", "badge fallback", "Dev fallback"));
     const last = (result.providers || []).slice(-1)[0];
-    if (last && last.kind === "local") meta.appendChild(el("span", "badge local", "Local"));
-    if (result.model) meta.appendChild(el("span", null, result.model));
+    if (!fast && last && last.kind === "local") meta.appendChild(el("span", "badge local", "Local"));
+    if (result.model && !fast) meta.appendChild(el("span", null, result.model));
     if (result.estimated_cost_usd) meta.appendChild(el("span", null, `~$${result.estimated_cost_usd.toFixed(4)}`));
     if (result.duration_s != null) meta.appendChild(el("span", null, `${result.duration_s}s`));
     m.appendChild(meta);
@@ -620,6 +634,7 @@
   const bindToggle = (id, key) => $(id).addEventListener("change", (e) => patch({ [key]: e.target.checked }));
   bindToggle("set-dry-computer", "dry_run_computer");
   bindToggle("set-dry-home", "dry_run_smart_home");
+  bindToggle("set-advanced", "advanced_mode");
   bindToggle("set-local-only", "local_only");
   bindToggle("set-mic", "microphone_enabled");
   bindToggle("set-camera", "camera_enabled");

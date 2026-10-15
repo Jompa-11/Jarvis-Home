@@ -23,11 +23,20 @@ regenerate the lock with the command at the top of the lock file (needs `uv`), a
 
 - The server binds to loopback only (`server.host` is validated); never expose it to the LAN or internet,
   never add firewall rules or port forwards.
-- Keep dry-run on (`computer.dry_run`, `homeassistant.dry_run`) until the owner decides otherwise.
+- Computer dry-run is OFF (`computer.dry_run = false`): the owner decided on 2026-10-14 that actions on the
+  PC happen for real. Keep `homeassistant.dry_run` on until the owner says otherwise. Ordinary owner actions
+  run without asking; deleting, shutting down and PowerShell are `Risk.HIGH` and always ask.
 - Secrets live only in `.env` (git-ignored) or Windows Credential Manager — never in code, config, logs,
   commits or chat. Never print `.env`.
-- The model may only act through registered tools (`jarvis/core/tools.py`); never add a shell/exec tool.
-  New tools declare risk, category, output sensitivity and dry-run support.
+- The model may only act through registered tools (`jarvis/core/tools.py`). New tools declare risk, category,
+  output sensitivity and dry-run support.
+- ONE shell tool exists, by the owner's explicit decision on 2026-10-14: `shell_run_powershell`
+  (`jarvis/computer/shell.py`). Do not loosen any of its guards: off until `advanced_mode` is on in
+  Settings, `Risk.HIGH` so the exact command is shown and approved every single time, the owner's normal
+  user and never elevated, 60 s timeout, 4000 characters of output, every run logged, a blocklist
+  (firewall, network, Defender, ExecutionPolicy, download-and-run, .env, Credential Manager), and
+  `blocked_after_untrusted`: refused for the rest of any turn in which JARVIS read e-mail, files, the
+  clipboard, window titles or a summary. Never add a second shell/exec tool.
 - Do not spend money (Anthropic API calls) without the owner's go-ahead; Ollama is free.
 - Don't change Windows system settings, install services, or enable virtualization without asking.
 
@@ -47,29 +56,39 @@ regenerate the lock with the command at the top of the lock file (needs `uv`), a
   the executor checks every call against the full registry). Personal tools (mail, files, notifications,
   summary, rules) are category `personal`: owner role only.
 
-## Status (2026-10-14)
+## Status (2026-10-15)
 
-- Runs on the owner's PC (Python 3.13.15, RTX 4060): all 356 tests pass; Ollama `qwen2.5:7b` runs 100% on
-  GPU with `num_ctx` 8192.
-- Merged: monitoring + rules (PR #8, Gmail read-only signed in and active); PR #9: file search + folder
-  watching (Hämtade filer/Dokument via Known Folders), morning summary + "Sammanfatta nu", per-request tool
-  selection, owner-only personal tools, game mode (`cs2.exe` or GPU > 85 % for 2 min: no background
-  Ollama calls, model unloaded).
-- Draft, not merged: Discord phone notifications (PR #10, `claude/jarvis-discord-notify`).
-- Branch `claude/jarvis-autostart` (draft PR): desktop app `pythonw -m jarvis --background` (pywebview window
-  maximized on the primary monitor, X hides, pystray icon, single instance, supervised server child with
-  max 5 restarts/h), `scripts/autostart.ps1 -Install/-Uninstall/-Status` (Startup + Start-menu shortcuts with
-  AppUserModelID `JarvisHome.JARVIS`), icon `assets/jarvis.ico` (`scripts/make_icon.py`). The owner explicitly
-  asked for autostart and a pinned app; keep it user level (no admin, service, HKLM, firewall).
-- Lock files: `proxy-tools` (a pywebview dependency, sdist only) is the one package allowed from source
-  (`--no-binary proxy-tools`, hash-pinned); everything else is wheels only.
-- `toolcheck` (qwen2.5:7b, 3 runs each): step 4 alone 6–7/8 (more tools made qwen skip `computer_list_apps`
-  and answer the time from context); with tool selection 8/8 ×3; with step 5 (10 cases) 10, 10, 9/10;
-  final run 10/10. Small models are sensitive to the number of tools: measure with `toolcheck` after adding
-  tools. `toolcheck` refuses to run during game mode (results would be GPU timeouts).
-- Voice (PR #6, #7) is paused as drafts; monitoring must not depend on it.
-- Not configured yet: Claude API key (owner must set a spend limit in the Anthropic Console first),
-  Home Assistant + Sonos (planned on the Raspberry Pi).
+- Runs on the owner's PC (Python 3.13.15, RTX 4060, 8 GB): 546 tests pass.
+- Merged: PR #8 (rules + monitoring, Gmail read-only), PR #9 (file search, folder watching, summary,
+  per-request tool selection, owner-only personal tools, game mode), PR #11 (desktop app: own window,
+  tray icon, single instance, supervised server, autostart shortcuts).
+- Draft, not merged: Discord phone notifications (PR #10). PR #12 `claude/jarvis-obey`: PC control
+  (any installed program, web, folders, windows, volume, media keys, typing, clipboard, file actions,
+  power), advanced PowerShell mode, and the fast path below.
+- **Fast path** (`jarvis/core/fastpath.py`): everyday commands are answered by local rules, never the
+  model, and marked SNABB. It goes through the executor, so permissions, confirmation, the
+  untrusted-data rules and dry-run are unchanged. `ai.fast_path = false` turns it off; `toolcheck`
+  turns it off by itself because it measures the model.
+- **Injection defence** (PR #12 review): untrusted text in the conversation makes EVERY non-READ tool
+  ask for confirmation, not just PowerShell, and the taint lives as long as that text is in the chat.
+  Opening a shell (powershell, cmd, wt, regedit, ...) is HIGH on its own; win+r and win+x are refused;
+  typing or pressing Enter into a console or the Run dialog is HIGH. See `tests/test_injection_chains.py`.
+- Routes: **ollama first** in every category (the owner has no paid API), then anthropic, then dev.
+  `ollama.think = false`, so a reasoning model does not think before a tool call.
+- Local model comparison (2026-10-15, 18 cases, 3 runs each, measured not guessed):
+
+  | Model | Score | Median reply | GPU memory |
+  |---|---|---|---|
+  | qwen2.5:7b | 17/18 ×3 | 1.1 s | 4863 MiB |
+  | qwen3:8b | 17/18 ×3 | 1.4 s | 6025 MiB |
+
+  Same score; qwen2.5:7b is faster and leaves 1.2 GB more for Whisper later, so it stays. Both miss
+  only "Byt till Chrome" (Chrome is not installed, and the fast path handles that phrase anyway).
+  Small models are sensitive to the number of tools: measure with `toolcheck` after adding tools.
+- Voice (PR #6, #7) is paused as drafts. The plan is Chatterbox Multilingual (MIT, Swedish, PerTh
+  watermark) on the CPU, since it needs ~3.5 GB of GPU memory and the model already uses ~4.9 GB of 8 GB.
+  Piper (`sv_SE-nst-medium`, CC0 data, KBLab) stays as the fast fallback and is used in game mode.
+- Not configured yet: Claude API key, Home Assistant + Sonos (planned on the Raspberry Pi).
 
 ## Git workflow
 

@@ -38,6 +38,23 @@ displays what the server reports: if no voice engine exists, the microphone show
 model response, and pass each proposed tool call to the executor. Actual results go back to the model,
 up to `ai.max_tool_rounds`. The model never executes anything.
 
+**The fast path** (`jarvis/core/fastpath.py`). Everyday commands never reach the model. Rules in Swedish and
+English recognise "öppna/starta X", "stäng X", "byt till X", volume, media keys, "öppna <webbplats>",
+"sök på X", the named folders, "lås datorn", "vad är klockan" and "sammanfatta dagen". A rule only fires
+when it is certain; anything else goes to the model. The call still goes through the executor, so
+permissions, confirmation, the untrusted-data rules and dry-run apply unchanged, and the reply is a fixed
+Swedish sentence built from the tool's own result, so JARVIS cannot claim more than the tool reported. The
+interface marks these answers **SNABB**. Turn it off with `ai.fast_path = false`; `toolcheck` turns it off
+by itself, since it measures the model.
+
+**Finding a program** (`jarvis/computer/apps.py`). The Start menu is read once through `Get-StartApps`
+(classic and Store apps). A name is matched exactly, by prefix, by substring and finally fuzzily
+(`difflib`, accent- and space-insensitive), so "cap cut", "CapCut" and a misheard "cicaput" all find
+CapCut. One clear winner is used; two equally good names produce "Menade du X eller Y?"; nothing close
+suggests the three nearest. Before starting anything JARVIS looks for a window that already belongs to the
+program and brings that to the front instead, and after starting one it waits up to 8 seconds for a window,
+so the answer is "var redan öppet", "är startat" or "startade, men ser inget fönster än" — never a guess.
+
 **Tool selection per request** (`jarvis/core/tool_select.py`). Small local models choose tools worse the
 more tools they see, so each turn shows the model only the tool groups that free keyword rules find in the
 request: `computer`, `files`, `mail`, `monitor`, `smart_home`, plus `system` (time, status, `rules_show`),

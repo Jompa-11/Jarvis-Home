@@ -27,6 +27,20 @@ log = logging.getLogger(__name__)
 IS_WINDOWS = sys.platform == "win32"
 
 
+def is_windows() -> bool:
+    """Injectable in tests, so the suite is green on Linux too."""
+    return sys.platform == "win32"
+
+
+def list_windows() -> list["WindowInfo"]:
+    """Visible top-level windows. Empty off Windows."""
+    return _enum_windows() if is_windows() else []
+
+
+def set_foreground(hwnd: int) -> bool:
+    return _set_foreground(hwnd) if is_windows() else False
+
+
 class ComputerError(Exception):
     pass
 

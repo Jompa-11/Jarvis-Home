@@ -82,6 +82,7 @@
         <button class="stop-btn" id="btn-cancel" type="button" hidden>Stop</button>
       </form>
       <div class="composer-hint" id="mic-hint"></div>
+      <div class="untrusted-note" id="untrusted-note" hidden></div>
     </main>
 
     <aside class="col col-right">
@@ -128,6 +129,7 @@
         <h3>Safety</h3>
         <label class="toggle"><input type="checkbox" id="set-dry-computer"><span class="track"></span><span class="label">Dry-run computer control<small>Describe actions on the PC instead of performing them.</small></span></label>
         <label class="toggle"><input type="checkbox" id="set-dry-home"><span class="track"></span><span class="label">Dry-run smart home<small>Simulate speaker and device actions.</small></span></label>
+        <label class="toggle"><input type="checkbox" id="set-advanced"><span class="track"></span><span class="label">Avancerat läge (PowerShell)<small>JARVIS får föreslå ett PowerShell-kommando. Det exakta kommandot visas och du godkänner varje gång. Blockeras om JARVIS läst mejl, filer, urklipp eller fönstertitlar i samma fråga.</small></span></label>
       </section>
       <section class="setting-group">
         <h3>Privacy</h3>

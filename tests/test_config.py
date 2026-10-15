@@ -6,7 +6,8 @@ from jarvis.config import ConfigError, load_config
 def test_defaults_without_file(tmp_path):
     cfg = load_config(tmp_path / "missing.toml", env={})
     assert cfg.server.host == "127.0.0.1"
-    assert cfg.computer.dry_run is True
+    assert cfg.computer.dry_run is False  # the owner asked for real actions; HIGH risk still confirms
+    assert cfg.computer.advanced_mode is False
     assert cfg.privacy.microphone_enabled is False
     assert cfg.ai.routes["conversation"][0].provider == "anthropic"
     assert cfg.default_profile == "owner"

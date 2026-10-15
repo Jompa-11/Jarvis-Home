@@ -32,6 +32,9 @@ class RuntimeSettings(BaseModel):
     speak_replies: bool = False
     # Monitoring paused: nothing interrupts; everything waits for the summary.
     monitoring_paused: bool = False
+    # Advanced mode: JARVIS may run a PowerShell command after showing it and
+    # getting an explicit OK. Off by default.
+    advanced_mode: bool = False
 
     def dry_run_categories(self) -> frozenset[str]:
         cats = set()
@@ -54,6 +57,7 @@ class SettingsStore:
             camera_enabled=cfg.privacy.camera_enabled,
             local_only=cfg.privacy.local_only,
             cloud_max_sensitivity=cfg.privacy.cloud_max_sensitivity,
+            advanced_mode=cfg.computer.advanced_mode,
         )
         self._overrides: dict[str, Any] = {}
         self.current = self.defaults

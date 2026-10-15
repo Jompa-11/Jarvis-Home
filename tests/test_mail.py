@@ -347,7 +347,9 @@ async def test_mail_list_recent_is_read_only_personal(make_core):
 def test_no_tool_can_send_delete_or_move_mail(make_core):
     names = {t.name for t in make_core().registry.all()}
     assert "mail_list_recent" in names
-    assert not any(w in n for n in names for w in ("send", "delete", "trash", "move", "archive", "mark", "label", "reply"))
+    mail_tools = [n for n in names if n.startswith("mail_")]
+    assert mail_tools == ["mail_list_recent"]
+    assert not any(w in n for n in mail_tools for w in ("send", "delete", "trash", "move", "archive", "mark", "label", "reply"))
 
 
 # --------------------------------------------------------- tokens and Gmail ----

@@ -3,6 +3,7 @@ import json
 
 from conftest import ScriptedProvider
 
+from jarvis.core.tools import Risk, ToolResult, ToolSpec, schema
 from jarvis.providers.base import ProviderError
 from jarvis.providers.dev_provider import DevProvider
 
@@ -61,42 +62,47 @@ async def test_unknown_tool_rejected(make_core):
     assert "Unknown tool" in tool_results(p["anthropic"])[0]["error"]
 
 
-async def test_high_volume_requires_confirmation_approved(make_core, fake_ha):
+async def test_ordinary_owner_action_runs_without_asking(make_core, fake_ha):
+    # The owner asked for ordinary actions to happen straight away; only HIGH risk asks.
     p = providers([[("sonos_set_volume", {"speaker": "kitchen", "level": 90})], "Done."])
     core = make_core(p)
+    seen = []
     q = core.bus.subscribe()
-
-    async def approve():
-        while True:
-            ev = await q.get()
-            if ev["type"] == "confirmation.requested":
-                assert "90" in ev["data"]["summary"]
-                assert core.confirmations.resolve(ev["data"]["id"], True)
-                return
-
-    approver = asyncio.create_task(approve())
     res = await core.orchestrator.handle("blast the kitchen")
-    await approver
+    while not q.empty():
+        seen.append((await q.get())["type"])
     assert res["ok"] and fake_ha.state.calls[-1]["data"]["volume_level"] == 0.9
+    assert "confirmation.requested" not in seen
+    assert core.confirmations.pending() == []
 
 
-async def test_confirmation_denied_blocks_action(make_core, fake_ha):
-    p = providers([[("sonos_announce", {"speaker": "kitchen", "message": "Dinner"})], "OK, I won't."])
-    core = make_core(p)
+async def test_high_risk_action_is_confirmed_and_can_be_denied(make_core, fake_ha):
+    core = make_core(providers([[("danger_delete", {})], "OK, I won't."]))
+    ran = []
+
+    async def handler(args, ctx):
+        ran.append(True)
+        return ToolResult(ok=True)
+
+    core.registry.register(
+        ToolSpec("danger_delete", "Delete things", schema({}), handler, Risk.HIGH, "computer",
+                 confirm_summary=lambda a: "Radera allt")
+    )
     q = core.bus.subscribe()
 
     async def deny():
         while True:
             ev = await q.get()
             if ev["type"] == "confirmation.requested":
+                assert ev["data"]["summary"] == "Radera allt"
                 core.confirmations.resolve(ev["data"]["id"], False)
                 return
 
     t = asyncio.create_task(deny())
-    await core.orchestrator.handle("announce dinner")
+    await core.orchestrator.handle("radera allt")
     await t
-    assert fake_ha.state.calls == []
-    assert "did not approve" in tool_results(p["anthropic"])[0]["error"]
+    assert ran == []
+    assert "did not approve" in tool_results(core.router.providers["anthropic"])[0]["error"]
     assert core.history.list()[0]["status"] == "denied"
 
 
@@ -112,20 +118,19 @@ async def test_dry_run_smart_home(make_core, fake_ha):
 
 async def test_computer_dry_run_skips_confirmation(make_core):
     p = providers([[("computer_open_app", {"app": "notepad"})], "Would open Notepad."])
-    core = make_core(p)
+    core = make_core(p)  # the test config keeps dry-run on
     res = await core.orchestrator.handle("open notepad")
     result = tool_results(p["anthropic"])[0]
     assert res["ok"] and result["dry_run"] is True and result["data"]["would_run"] == ["notepad.exe"]
     assert core.confirmations.pending() == []
 
 
-async def test_disallowed_app_rejected(make_core):
-    p = providers([[("computer_open_app", {"app": "cmd"})], "Not allowed."])
+async def test_unknown_app_is_reported_not_invented(make_core):
+    p = providers([[("computer_open_app", {"app": "finnsinteprogram"})], "Hittade inget sådant."])
     core = make_core(p)
-    await core.orchestrator.handle("open cmd")
+    await core.orchestrator.handle("öppna finnsinteprogram")
     err = tool_results(p["anthropic"])[0]["error"]
-    # Rejected by the schema (enum of approved apps) before the adapter is reached.
-    assert "Invalid arguments" in err and "notepad" in err
+    assert "Hittade inget installerat program" in err and "finnsinteprogram" in err
 
 
 async def test_role_restrictions(make_core, fake_ha):
@@ -173,9 +178,14 @@ async def test_max_tool_rounds(make_core):
 
 
 async def test_cancel_during_confirmation_keeps_transcript_valid(make_core, fake_ha):
-    p = providers([[("sonos_announce", {"speaker": "kitchen", "message": "hi"})]])
+    p = providers([[("slow_danger", {})]])
     core = make_core(p)
-    task = asyncio.create_task(core.orchestrator.handle("announce hi"))
+
+    async def handler(args, ctx):
+        return ToolResult(ok=True)
+
+    core.registry.register(ToolSpec("slow_danger", "d", schema({}), handler, Risk.HIGH, "computer"))
+    task = asyncio.create_task(core.orchestrator.handle("gör något farligt"))
     for _ in range(100):
         await asyncio.sleep(0.01)
         if core.confirmations.pending():

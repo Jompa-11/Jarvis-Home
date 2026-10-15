@@ -265,6 +265,7 @@ def register_file_tools(registry: "ToolRegistry", watcher: FileWatcher, *, allow
             Risk.READ,
             "personal",
             output_sensitivity="personal",
+            untrusted_output=True,  # file names are chosen by whoever made the file
         )
     )
     if not allow_open:

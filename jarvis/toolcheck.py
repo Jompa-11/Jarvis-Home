@@ -39,6 +39,16 @@ CASES: list[Case] = [
     Case("Pausa musiken i köket", frozenset({"sonos_playback"})),
     Case("Hitta min senaste faktura", frozenset({"files_search"})),
     Case("Sammanfatta dagen", frozenset({"monitor_summary_now"})),
+    Case("Öppna Spotify", frozenset({"computer_open_app"})),
+    Case("Sätt volymen på 30", frozenset({"volume_set"})),
+    Case("Pausa musiken", frozenset({"media_control"})),
+    Case("Öppna youtube", frozenset({"computer_open_web"})),
+    Case("Öppna hämtade filer", frozenset({"computer_open_folder"})),
+    Case("Lås datorn", frozenset({"power_lock"})),
+    Case("Öppna CapCut", frozenset({"computer_open_app"})),
+    Case("Öppna cap cut", frozenset({"computer_open_app"})),
+    Case("Starta Discord", frozenset({"computer_open_app"})),
+    Case("Byt till Chrome", frozenset({"computer_window"})),
     Case("Berätta ett kort skämt", frozenset()),
 ]
 
@@ -74,6 +84,7 @@ def _isolated_config(cfg: JarvisConfig, model: str | None) -> JarvisConfig:
     route = [ModelRoute(provider="ollama", model=model)]
     test_cfg.ai.routes = {name: [r.model_copy() for r in route] for name in cfg.ai.routes}
     test_cfg.ai.allow_dev_fallback = False
+    test_cfg.ai.fast_path = False  # we are measuring the model, not the rules
     test_cfg.ai.max_tool_rounds = 4
     return test_cfg
 

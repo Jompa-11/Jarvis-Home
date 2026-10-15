@@ -205,5 +205,6 @@ def register_mail_tools(registry: "ToolRegistry", watcher: MailWatcher) -> None:
             Risk.READ,
             "personal",
             output_sensitivity="personal",
+            untrusted_output=True,
         )
     )
