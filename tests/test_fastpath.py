@@ -170,3 +170,20 @@ async def test_the_shortcut_can_be_turned_off(make_core):
                      ai={"fast_path": False, "routes": {"conversation": [{"provider": "anthropic"}], "computer": [{"provider": "anthropic"}]}})
     res = await core.orchestrator.handle("öppna spotify")
     assert res["provider"] == "anthropic" and model.requests
+
+
+async def test_pc_volume_follows_the_computer_dry_run_not_the_speakers(make_core):
+    """PC volume is the computer, not the smart home: the speaker dry-run must not mute it."""
+    core, _ = core_with_fastpath(make_core, computer={"enabled": True, "dry_run": False},
+                                 homeassistant={"url": "http://ha.test", "dry_run": True})
+    res = await core.orchestrator.handle("volym 15")
+    assert res["text"] == "Volymen är nu 15 procent."  # really set, not "skulle ha"
+    assert core.desktop.api.volume == 15
+
+
+async def test_the_clock_is_said_like_a_person_would(make_core):
+    core, _ = core_with_fastpath(make_core)
+    res = await core.orchestrator.handle("vad är klockan?")
+    import re
+
+    assert re.fullmatch(r"Klockan är \d{2}:\d{2}\.", res["text"]), res["text"]

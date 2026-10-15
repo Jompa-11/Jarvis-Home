@@ -76,19 +76,19 @@ def register_desktop_tools(
     registry.register(ToolSpec(
         "volume_set", "Sätt datorns ljudvolym, t.ex. 'sätt volymen på 30'. 0-100. Gäller datorn, inte högtalare i hemmet.",
         schema({"level": {"type": "integer", "minimum": 0, "maximum": 100}}, ["level"]),
-        volume_set, Risk.LOW, "media", supports_dry_run=True,
+        volume_set, Risk.LOW, "media", supports_dry_run=True, dry_run_category="computer",
         confirm_summary=lambda a: f"Sätta datorns volym till {a['level']}%",
     ))
     registry.register(ToolSpec(
         "volume_adjust", "Höj eller sänk datorns volym, t.ex. 'höj volymen' (step 10) eller 'sänk volymen' (step -10).",
         schema({"step": {"type": "integer", "minimum": -100, "maximum": 100}}, ["step"]),
-        volume_adjust, Risk.LOW, "media", supports_dry_run=True,
+        volume_adjust, Risk.LOW, "media", supports_dry_run=True, dry_run_category="computer",
         confirm_summary=lambda a: f"Ändra datorns volym med {a['step']}",
     ))
     registry.register(ToolSpec(
         "volume_mute", "Tysta eller slå på datorns ljud. Utan argument växlar den.",
         schema({"muted": {"type": "boolean", "description": "true = tyst, false = ljud på."}}),
-        volume_mute, Risk.LOW, "media", supports_dry_run=True,
+        volume_mute, Risk.LOW, "media", supports_dry_run=True, dry_run_category="computer",
         confirm_summary=lambda a: "Tysta datorn" if a.get("muted", True) else "Slå på datorns ljud",
     ))
 
@@ -104,7 +104,7 @@ def register_desktop_tools(
         "Styr musik på DEN HÄR DATORN (Spotify, webbläsaren) med mediatangenterna: 'pausa musiken', 'nästa låt'. "
         "Nämner ägaren ett rum, till exempel köket, är det högtalarna och sonos_playback som gäller.",
         schema({"action": {"type": "string", "enum": ["play", "pause", "next", "previous", "stop"]}}, ["action"]),
-        media_control, Risk.LOW, "media", supports_dry_run=True,
+        media_control, Risk.LOW, "media", supports_dry_run=True, dry_run_category="computer",
         confirm_summary=lambda a: f"Mediatangent: {a['action']}",
     ))
 

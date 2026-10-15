@@ -116,7 +116,9 @@ def _reply_lock(data: dict, dry_run: bool) -> str:
 
 
 def _reply_time(data: dict, dry_run: bool) -> str:
-    return f"Klockan är {data.get('local_time', '')}."
+    stamp = str(data.get("local_time", ""))
+    clock = stamp[11:16] if len(stamp) >= 16 else stamp  # "2026-10-15 11:47:50" -> "11:47"
+    return f"Klockan är {clock}."
 
 
 def _reply_summary(data: dict, dry_run: bool) -> str:
